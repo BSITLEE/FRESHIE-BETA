@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { ArrowLeft, Users, Database, BarChart3, Settings, Plus, AlertCircle } from 'lucide-react';
-import backgroundImg from '../../artassets/background.png';
+import { ArrowLeft, Users, Database, BarChart3, Settings, Plus } from 'lucide-react';
+import backgroundImg from '../../artassets/background.webp';
+import { isSupabaseConfigured, supabase } from '../utils/supabaseClient';
+import { fetchAdminSnapshot } from '../utils/supabaseApi';
+import { formatLocalDateTime } from '../utils/time';
 
 /**
  * Admin Dashboard - Database-Ready Structure
@@ -24,13 +27,56 @@ import backgroundImg from '../../artassets/background.png';
 export default function AdminDashboard() {
   const navigate = useNavigate();
 
-  // TODO: Replace with actual Supabase queries
-  const [stats] = useState({
+  const [stats, setStats] = useState({
     totalUsers: 0,
+    totalParents: 0,
     totalStudents: 0,
     totalTeachers: 0,
+    totalAdmins: 0,
+    totalAssignments: 0,
+    completedAssignments: 0,
     totalGamesPlayed: 0,
   });
+  const [recentUsers, setRecentUsers] = useState<Array<{ id: string; email: string; role: string; created_at: string }>>([]);
+  const [recentActivity, setRecentActivity] = useState<Array<{
+    id: string;
+    event_type: string;
+    entity_type: string;
+    created_at: string;
+  }>>([]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) return;
+    const run = async () => {
+      const a = await fetchAdminSnapshot();
+      setStats({
+        totalUsers: a.totalUsers,
+        totalParents: a.totalParents,
+        totalStudents: a.totalStudents,
+        totalTeachers: a.totalTeachers,
+        totalAdmins: a.totalAdmins,
+        totalAssignments: a.totalAssignments,
+        completedAssignments: a.completedAssignments,
+        totalGamesPlayed: a.totalGamesPlayed,
+      });
+      setRecentUsers(a.recentUsers);
+      setRecentActivity(a.recentActivity);
+    };
+    run().catch((e) => console.error(e));
+
+    const channel = supabase
+      .channel('admin-analytics')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => void run())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'student_profiles' }, () => void run())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'student_progress' }, () => void run())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'assignments' }, () => void run())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'activity_logs' }, () => void run())
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   return (
     <div
@@ -158,19 +204,26 @@ export default function AdminDashboard() {
               </Card>
             </div>
 
-            {/* Empty State Message */}
             <Card className="border-4 border-indigo-400 bg-white/95 shadow-lg">
-              <CardContent className="p-12 text-center">
-                <AlertCircle className="w-16 h-16 text-indigo-600 mx-auto mb-4" />
-                <h3 className="text-2xl font-bold text-gray-800 mb-2">
-                  Database Integration Required
-                </h3>
-                <p className="text-lg text-gray-600 mb-4">
-                  Connect to Supabase to see real-time analytics and user data
-                </p>
-                <p className="text-sm text-gray-500">
-                  Refer to DATABASE_SCHEMA.md for integration instructions
-                </p>
+              <CardHeader>
+                <CardTitle className="text-2xl">Assignments</CardTitle>
+                <CardDescription>Teacher-issued activity tracking</CardDescription>
+              </CardHeader>
+              <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-4 rounded-lg border bg-gray-50">
+                  <p className="text-sm text-gray-600">Total</p>
+                  <p className="text-2xl font-bold">{stats.totalAssignments}</p>
+                </div>
+                <div className="p-4 rounded-lg border bg-green-50">
+                  <p className="text-sm text-gray-600">Completed</p>
+                  <p className="text-2xl font-bold text-green-700">{stats.completedAssignments}</p>
+                </div>
+                <div className="p-4 rounded-lg border bg-amber-50">
+                  <p className="text-sm text-gray-600">Pending</p>
+                  <p className="text-2xl font-bold text-amber-700">
+                    {Math.max(0, stats.totalAssignments - stats.completedAssignments)}
+                  </p>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -190,14 +243,28 @@ export default function AdminDashboard() {
                   </Button>
                 </div>
               </CardHeader>
-              <CardContent className="p-12 text-center">
-                <Users className="w-16 h-16 text-blue-600 mx-auto mb-4" />
-                <h3 className="text-xl font-bold text-gray-800 mb-2">
-                  No Users Found
-                </h3>
-                <p className="text-gray-600">
-                  Connect to database to view and manage users
-                </p>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                  <div className="p-3 border rounded-lg bg-blue-50"><p className="text-xs">All Users</p><p className="font-bold">{stats.totalUsers}</p></div>
+                  <div className="p-3 border rounded-lg bg-cyan-50"><p className="text-xs">Parents</p><p className="font-bold">{stats.totalParents}</p></div>
+                  <div className="p-3 border rounded-lg bg-purple-50"><p className="text-xs">Teachers</p><p className="font-bold">{stats.totalTeachers}</p></div>
+                  <div className="p-3 border rounded-lg bg-emerald-50"><p className="text-xs">Admins</p><p className="font-bold">{stats.totalAdmins}</p></div>
+                </div>
+                <div className="space-y-2">
+                  {recentUsers.length === 0 ? (
+                    <p className="text-gray-600">No recent user records yet.</p>
+                  ) : (
+                    recentUsers.map((user) => (
+                      <div key={user.id} className="p-3 border rounded-lg bg-white flex items-center justify-between">
+                        <div>
+                          <p className="text-sm">{user.email}</p>
+                          <p className="text-xs text-gray-500">{formatLocalDateTime(user.created_at)}</p>
+                        </div>
+                        <span className="text-xs uppercase font-semibold">{user.role}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -221,7 +288,7 @@ export default function AdminDashboard() {
                 <CardContent className="p-8 text-center">
                   <Database className="w-12 h-12 text-pink-600 mx-auto mb-3" />
                   <p className="text-gray-600">
-                    Connect database to manage colors
+                    Content management API not implemented yet (analytics live).
                   </p>
                 </CardContent>
               </Card>
@@ -242,7 +309,7 @@ export default function AdminDashboard() {
                 <CardContent className="p-8 text-center">
                   <Database className="w-12 h-12 text-purple-600 mx-auto mb-3" />
                   <p className="text-gray-600">
-                    Connect database to manage shapes
+                    Content management API not implemented yet (analytics live).
                   </p>
                 </CardContent>
               </Card>
@@ -260,7 +327,7 @@ export default function AdminDashboard() {
                 <div className="p-4 bg-green-50 rounded-lg border-2 border-green-300">
                   <h4 className="font-bold text-lg mb-2 text-green-800">Database Status</h4>
                   <p className="text-gray-700">
-                    Not Connected - Configure Supabase connection
+                    {isSupabaseConfigured ? 'Connected to Supabase' : 'Not Connected'}
                   </p>
                 </div>
 
@@ -274,8 +341,23 @@ export default function AdminDashboard() {
                 <div className="p-4 bg-amber-50 rounded-lg border-2 border-amber-300">
                   <h4 className="font-bold text-lg mb-2 text-amber-800">Authentication</h4>
                   <p className="text-gray-700">
-                    Using local state - Configure Supabase Auth
+                    Supabase Auth enabled with role-based routes
                   </p>
+                </div>
+                <div className="p-4 bg-indigo-50 rounded-lg border-2 border-indigo-300">
+                  <h4 className="font-bold text-lg mb-2 text-indigo-800">Recent Activity Log</h4>
+                  <div className="space-y-2 max-h-56 overflow-y-auto">
+                    {recentActivity.length === 0 ? (
+                      <p className="text-gray-700">No activity rows yet.</p>
+                    ) : (
+                      recentActivity.map((row) => (
+                        <div key={row.id} className="text-sm p-2 border rounded bg-white">
+                          <strong>{row.event_type}</strong> on <em>{row.entity_type}</em>
+                          <div className="text-xs text-gray-500 mt-1">{formatLocalDateTime(row.created_at)}</div>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>

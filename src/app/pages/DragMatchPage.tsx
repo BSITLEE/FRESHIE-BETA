@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useLocation } from 'react-router';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { TouchBackend } from 'react-dnd-touch-backend';
@@ -9,7 +9,7 @@ import { QuizSettings } from '../components/QuizSettings';
 import { BackButton } from '../components/BackButton';
 import { generateDragMatchQuestion, getColorHex, getShapeSvg } from '../utils/mockData';
 import { Check } from 'lucide-react';
-import backgroundImg from '../../artassets/background.png';
+import backgroundImg from '../../artassets/background.webp';
 import { useUserStore } from '../utils/useUserStore';
 
 const ItemType = 'SHAPE';
@@ -133,7 +133,9 @@ function DropZone({ targetColor, targetShape, droppedItem, onDrop, feedback }: D
 
 function DragMatchGame() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { userState } = useUserStore();
+  const assignmentId = (location.state as { assignmentId?: string } | null)?.assignmentId;
   const [gameStarted, setGameStarted] = useState(false);
   const [question, setQuestion] = useState(() => generateDragMatchQuestion());
   const [droppedItem, setDroppedItem] = useState<{ color: string; shape: string } | null>(null);
@@ -173,7 +175,8 @@ function DragMatchGame() {
             score: 100,
             correct: 1,
             total: 1,
-            gameType: 'dragMatch'
+            gameType: 'dragMatch',
+            assignmentId: assignmentId ?? null,
           }
         });
       }, 2000);

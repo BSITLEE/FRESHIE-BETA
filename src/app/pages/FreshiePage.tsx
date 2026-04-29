@@ -2,8 +2,8 @@ import { useNavigate } from 'react-router';
 import { Button } from '../components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import { motion } from 'motion/react';
-import backgroundImg from '../../artassets/background.png';
-import freshieProfileImg from '../../artassets/freshieprofile.png';
+import backgroundImg from '../../artassets/background.webp';
+import freshieProfileImg from '../../artassets/freshieprofile.webp';
 
 export default function FreshiePage() {
   const navigate = useNavigate();

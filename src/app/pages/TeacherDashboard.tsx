@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
@@ -13,13 +13,30 @@ import {
 } from '../components/ui/dialog';
 import { Checkbox } from '../components/ui/checkbox';
 import { Label } from '../components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { ArrowLeft, Users, BookOpen, TrendingUp, Award, Plus, Check, Link2 } from 'lucide-react';
-import backgroundImg from '../../artassets/background.png';
-import { AVATAR_EMOJIS } from '../utils/mockData';
+import { ArrowLeft, Users, BookOpen, TrendingUp, Award, Plus, Check, Link2, Trash2, UserMinus } from 'lucide-react';
+import backgroundImg from '../../artassets/background.webp';
 import { useAssignmentStore } from '../utils/useAssignmentStore';
 import { useUserStore } from '../utils/useUserStore';
 import { Input } from '../components/ui/input';
+import { isSupabaseConfigured, supabase } from '../utils/supabaseClient';
+import {
+  assignStudentToTeacher,
+  assignStudentsToClass,
+  createTeacherClass,
+  fetchAchievementsForStudents,
+  fetchTeacherStudents,
+  fetchTeacherStudentsForClass,
+  fetchProgressForStudents,
+  fetchAssignmentsForTeacher,
+  fetchTeacherClasses,
+  fetchParentStudentsByEmail,
+  deleteAssignmentsForTeacherStudent,
+  deleteStudentProfile,
+  removeStudentFromClass,
+  unassignStudentFromTeacher,
+} from '../utils/supabaseApi';
+import { progressRowToChildProfile } from '../utils/supabaseModels';
+import { formatLocalDateTime } from '../utils/time';
 
 /**
  * Teacher Dashboard - Student Management & Assignment System
@@ -39,8 +56,9 @@ import { Input } from '../components/ui/input';
 
 export default function TeacherDashboard() {
   const navigate = useNavigate();
-  const { userState, addChild } = useUserStore();
-  const { createAssignment } = useAssignmentStore();
+  const { userState, login } = useUserStore();
+  const { createAssignment, clearCompletedIndicator } = useAssignmentStore();
+  const [teacherIdState, setTeacherIdState] = useState<string | null>(null);
 
   const [showAssignDialog, setShowAssignDialog] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState<{
@@ -48,18 +66,80 @@ export default function TeacherDashboard() {
     name: string;
   } | null>(null);
   const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
+  const [selectedQuestionCount, setSelectedQuestionCount] = useState<5 | 10 | 15 | 20>(10);
 
   const [showAddStudentDialog, setShowAddStudentDialog] = useState(false);
-  const [newStudentName, setNewStudentName] = useState('');
-  const [newStudentAge, setNewStudentAge] = useState('');
-  const [newStudentAvatar, setNewStudentAvatar] = useState('🦁');
+  const [lookupMessage, setLookupMessage] = useState<string | null>(null);
 
   // Connection feature state
   const [connectStudentEmail, setConnectStudentEmail] = useState('');
-  const [connectStudentCode, setConnectStudentCode] = useState('');
+  const [availableParentStudents, setAvailableParentStudents] = useState<Array<{ id: string; name: string; age: number | null }>>([]);
+  const [selectedParentStudentIds, setSelectedParentStudentIds] = useState<string[]>([]);
+  const [classes, setClasses] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedClassId, setSelectedClassId] = useState<string>('all');
+  const [newClassName, setNewClassName] = useState('');
+  const [showClassDialog, setShowClassDialog] = useState(false);
+  const [selectedClassForAssign, setSelectedClassForAssign] = useState<string>('all');
+  const [teacherAssignments, setTeacherAssignments] = useState<Array<{
+    id: string;
+    activityName: string;
+    assignedTo: string;
+    completed: boolean;
+    classId?: string | null;
+    questionCount?: number | null;
+    assignedDate?: string;
+    completedAt?: string | null;
+  }>>([]);
 
   // Use teacher's students from userState (database-driven)
   const students = userState.children || [];
+  const studentNameMap = new Map(students.map((student) => [student.id, student.name]));
+
+  const refreshTeacherAssignments = async (teacherId: string) => {
+    const assignments = await fetchAssignmentsForTeacher(teacherId);
+    setTeacherAssignments(
+      assignments.map((row) => ({
+        id: row.id,
+        activityName: row.activity_name,
+        assignedTo: row.assigned_to,
+        completed: row.completed,
+        classId: row.class_id ?? null,
+        questionCount: row.question_count ?? null,
+        assignedDate: row.assigned_date,
+        completedAt: row.completed_at,
+      }))
+    );
+  };
+
+  const refreshClasses = async (teacherId: string) => {
+    const rows = await fetchTeacherClasses(teacherId);
+    setClasses(rows.map((row) => ({ id: row.id, name: row.name })));
+  };
+
+  const refreshTeacherStudentsInStore = async (teacherId: string, classId?: string | null) => {
+    const refreshedStudents = await fetchTeacherStudentsForClass({
+      teacherId,
+      classId: classId && classId !== 'all' ? classId : null,
+    });
+    const progress = await fetchProgressForStudents(refreshedStudents.map((s) => s.id));
+    const achievementMap = await fetchAchievementsForStudents(refreshedStudents.map((s) => s.id));
+    const children = refreshedStudents.map((s) => progressRowToChildProfile(s, progress[s.id] ?? null, achievementMap[s.id] ?? []));
+    login(userState.email ?? '', 'teacher', children);
+  };
+
+  useEffect(() => {
+    const run = async () => {
+      if (!(isSupabaseConfigured && supabase) || userState.role !== 'teacher') return;
+      const { data: authData } = await supabase.auth.getUser();
+      const teacherId = authData.user?.id;
+      if (!teacherId) return;
+      setTeacherIdState(teacherId);
+      await refreshClasses(teacherId);
+      await refreshTeacherStudentsInStore(teacherId, selectedClassId);
+      await refreshTeacherAssignments(teacherId);
+    };
+    run().catch((e) => console.error(e));
+  }, [userState.role, selectedClassId]);
 
   const classStats = {
     totalStudents: students.length,
@@ -77,22 +157,37 @@ export default function TeacherDashboard() {
     name: string
   ) => {
     setSelectedActivity({ type, name });
-    setSelectedStudents([]);
+    setSelectedClassForAssign(selectedClassId);
+    setSelectedStudents(selectedClassId !== 'all' ? students.map((child) => child.id) : []);
+    setSelectedQuestionCount(10);
     setShowAssignDialog(true);
   };
 
   const handleAssignActivity = () => {
     if (selectedActivity && selectedStudents.length > 0) {
-      createAssignment(
-        selectedActivity.type,
-        selectedActivity.name,
-        userState.email || 'Teacher',
-        selectedStudents
-      );
-      setShowAssignDialog(false);
-      setSelectedActivity(null);
-      setSelectedStudents([]);
-      alert(`${selectedActivity.name} assigned to ${selectedStudents.length} student(s)!`);
+      const run = async () => {
+        await createAssignment(
+          selectedActivity.type,
+          selectedActivity.name,
+          userState.email || 'Teacher',
+          selectedStudents,
+          selectedQuestionCount,
+          selectedClassForAssign !== 'all' ? selectedClassForAssign : null
+        );
+        if (isSupabaseConfigured && supabase) {
+          const { data: authData } = await supabase.auth.getUser();
+          const teacherId = authData.user?.id;
+          if (teacherId) await refreshTeacherAssignments(teacherId);
+        }
+        setShowAssignDialog(false);
+        setSelectedActivity(null);
+        setSelectedStudents([]);
+        alert(`${selectedActivity.name} assigned to ${selectedStudents.length} student(s)!`);
+      };
+      run().catch((e) => {
+        console.error(e);
+        alert('Failed to assign activity. Please try again.');
+      });
     }
   };
 
@@ -112,70 +207,133 @@ export default function TeacherDashboard() {
     }
   };
 
-  /**
-   * Add New Student (Teacher-Created Profile)
-   * Creates a brand new student profile owned by the teacher.
-   *
-   * Database Integration:
-   * - Insert into `students` table with `created_by` = teacher's user ID
-   * - Also insert into `student_teacher` junction table to link teacher to student
-   */
-  const handleAddStudent = () => {
-    if (newStudentName.trim() && newStudentAge.trim()) {
-      // TODO: Replace with Supabase insert
-      // const { data, error } = await supabase.from('students').insert({
-      //   name: newStudentName.trim(),
-      //   age: parseInt(newStudentAge),
-      //   avatar: newStudentAvatar,
-      //   created_by: userState.id,
-      // }).select().single();
-      //
-      // await supabase.from('student_teacher').insert({
-      //   student_id: data.id,
-      //   teacher_id: userState.id,
-      // });
-
-      addChild(newStudentName.trim(), newStudentAvatar);
-      setNewStudentName('');
-      setNewStudentAge('');
-      setNewStudentAvatar('🦁');
-      setShowAddStudentDialog(false);
-      alert(`Student added successfully!`);
+  const handleLookupParentStudents = async () => {
+    try {
+      if (!connectStudentEmail.trim()) {
+        alert('Enter the parent email first.');
+        return;
+      }
+      const normalizedEmail = connectStudentEmail.trim().toLowerCase();
+      const rows = await fetchParentStudentsByEmail(normalizedEmail);
+      setAvailableParentStudents(rows.map((row) => ({ id: row.id, name: row.name, age: row.age ?? null })));
+      setSelectedParentStudentIds([]);
+      setLookupMessage(
+        rows.length > 0
+          ? `Found ${rows.length} child profile${rows.length === 1 ? '' : 's'} for ${normalizedEmail}.`
+          : 'No child profiles found for this parent email.'
+      );
+      if (rows.length === 0) {
+        alert('No child profiles found for this parent email.');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Failed to load parent profiles. Please try again.');
     }
   };
 
-  /**
-   * Connect to Existing Student (Parent-Created Profile)
-   * Links a teacher to a student that was created by a parent.
-   *
-   * Database Integration:
-   * - Search `students` table by parent email or unique student code
-   * - Insert into `student_teacher` junction table to create relationship
-   * - Teacher can now see student's progress and assign activities
-   */
-  const handleConnectStudent = async () => {
-    // TODO: Implement Supabase connection logic
-    // const { data: student, error } = await supabase
-    //   .from('students')
-    //   .select('*, users!parent_id(email)')
-    //   .or(`users.email.eq.${connectStudentEmail},id.eq.${connectStudentCode}`)
-    //   .single();
-    //
-    // if (error || !student) {
-    //   alert('Student not found. Please check the email or code.');
-    //   return;
-    // }
-    //
-    // await supabase.from('student_teacher').insert({
-    //   student_id: student.id,
-    //   teacher_id: userState.id,
-    // });
+  const handleConnectSelectedProfiles = async () => {
+    try {
+      if (!(isSupabaseConfigured && supabase)) {
+        alert('Supabase is not configured yet.');
+        return;
+      }
+      if (selectedParentStudentIds.length === 0) {
+        alert('Select at least one child profile to connect.');
+        return;
+      }
+      const { data: authData } = await supabase.auth.getUser();
+      const teacherId = authData.user?.id;
+      if (!teacherId) throw new Error('Missing teacher id');
 
-    setConnectStudentEmail('');
-    setConnectStudentCode('');
-    setShowAddStudentDialog(false);
-    alert('Student connection feature will be available after Supabase integration.');
+      for (const studentId of selectedParentStudentIds) {
+        await assignStudentToTeacher({ teacherId, studentId });
+        if (selectedClassId !== 'all') {
+          await assignStudentsToClass({ classId: selectedClassId, studentIds: [studentId] });
+        }
+      }
+
+      await refreshTeacherStudentsInStore(teacherId, selectedClassId);
+      await refreshTeacherAssignments(teacherId);
+      await refreshClasses(teacherId);
+
+      setAvailableParentStudents([]);
+      setSelectedParentStudentIds([]);
+      setLookupMessage(null);
+      setConnectStudentEmail('');
+      setShowAddStudentDialog(false);
+      alert(`Connected ${selectedParentStudentIds.length} profile(s) successfully!`);
+    } catch (e) {
+      console.error(e);
+      alert('Failed to connect selected profiles. Please try again.');
+    }
   };
+
+  const handleRemoveStudentFromClass = async (studentId: string) => {
+    if (!(isSupabaseConfigured && supabase)) {
+      alert('Supabase is not configured yet.');
+      return;
+    }
+    const { data: authData } = await supabase.auth.getUser();
+    const teacherId = authData.user?.id;
+    if (!teacherId) throw new Error('Missing teacher id');
+
+    const student = students.find((s) => s.id === studentId) ?? null;
+    const isTeacherOwned = student?.parentId === teacherId;
+
+    if (selectedClassId !== 'all') {
+      await removeStudentFromClass({ classId: selectedClassId, studentId });
+    } else if (isTeacherOwned) {
+      await deleteStudentProfile({ studentId, parentId: teacherId });
+    } else {
+      await deleteAssignmentsForTeacherStudent({ teacherId, studentId });
+      await unassignStudentFromTeacher({ teacherId, studentId });
+    }
+
+    await refreshTeacherStudentsInStore(teacherId, selectedClassId);
+    await refreshTeacherAssignments(teacherId);
+    await refreshClasses(teacherId);
+  };
+
+  const handleCreateClass = async () => {
+    try {
+      if (!(isSupabaseConfigured && supabase)) return;
+      if (!newClassName.trim()) return;
+      const { data: authData } = await supabase.auth.getUser();
+      const teacherId = authData.user?.id;
+      if (!teacherId) throw new Error('Missing teacher id');
+      const created = await createTeacherClass({ teacherId, name: newClassName.trim() });
+      await refreshClasses(teacherId);
+      setSelectedClassId(created.id);
+      setNewClassName('');
+      setShowClassDialog(false);
+      await refreshTeacherStudentsInStore(teacherId, created.id);
+    } catch (e) {
+      console.error(e);
+      alert('Failed to create class. Please try again.');
+    }
+  };
+
+  useEffect(() => {
+    if (!(isSupabaseConfigured && supabase) || !teacherIdState) return;
+    const refreshAll = async () => {
+      await refreshClasses(teacherIdState);
+      await refreshTeacherStudentsInStore(teacherIdState, selectedClassId);
+      await refreshTeacherAssignments(teacherIdState);
+    };
+
+    const channel = supabase
+      .channel(`teacher-dashboard-${teacherIdState}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'teacher_students' }, () => void refreshAll())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'student_progress' }, () => void refreshAll())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'assignments' }, () => void refreshAll())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'teacher_classes' }, () => void refreshAll())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'class_students' }, () => void refreshAll())
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [teacherIdState, selectedClassId]);
 
   return (
     <div 
@@ -210,6 +368,41 @@ export default function TeacherDashboard() {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto space-y-6">
+        {/* Class Overview Stats */}
+        <Card className="border-4 border-cyan-400 bg-white/95 shadow-lg">
+          <CardHeader>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <CardTitle className="text-2xl">Classes</CardTitle>
+                <CardDescription>Organize connected students into multiple classes.</CardDescription>
+              </div>
+              <Button className="bg-cyan-600 hover:bg-cyan-700" onClick={() => setShowClassDialog(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                New Class
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant={selectedClassId === 'all' ? 'default' : 'outline'}
+                onClick={() => setSelectedClassId('all')}
+              >
+                All Students
+              </Button>
+              {classes.map((teacherClass) => (
+                <Button
+                  key={teacherClass.id}
+                  variant={selectedClassId === teacherClass.id ? 'default' : 'outline'}
+                  onClick={() => setSelectedClassId(teacherClass.id)}
+                >
+                  {teacherClass.name}
+                </Button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Class Overview Stats */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
           <Card className="border-4 border-blue-400 bg-white/95 shadow-lg">
@@ -332,6 +525,24 @@ export default function TeacherDashboard() {
                           {badge}
                         </div>
                       ))}
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() =>
+                          handleRemoveStudentFromClass(student.id).catch((e) => {
+                            console.error(e);
+                            alert('Failed to remove student. Please try again.');
+                          })
+                        }
+                        className="border-2 border-red-400 hover:bg-red-100"
+                        title="Remove from class"
+                      >
+                        {teacherIdState && student.parentId === teacherIdState ? (
+                          <Trash2 className="w-5 h-5 text-red-600" />
+                        ) : (
+                          <UserMinus className="w-5 h-5 text-red-600" />
+                        )}
+                      </Button>
                     </div>
                   </div>
 
@@ -496,149 +707,174 @@ export default function TeacherDashboard() {
             </CardContent>
           </Card>
         </div>
+
+        <Card className="border-4 border-indigo-400 bg-white/95 shadow-lg">
+          <CardHeader>
+            <CardTitle className="text-2xl">Assignment Completion Tracker</CardTitle>
+            <CardDescription>Monitor who has finished assigned activities.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {teacherAssignments.length === 0 ? (
+              <p className="text-gray-600">No assignments yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {teacherAssignments.map((assignment) => (
+                  <div key={assignment.id} className="flex items-center justify-between p-3 rounded-lg border bg-gray-50">
+                    <div>
+                      <p className="font-semibold">{assignment.activityName}</p>
+                      <p className="text-sm text-gray-600">
+                        Student: {studentNameMap.get(assignment.assignedTo) ?? assignment.assignedTo}
+                      </p>
+                      {assignment.questionCount ? (
+                        <p className="text-xs text-gray-500">Questions: {assignment.questionCount}</p>
+                      ) : null}
+                      <p className="text-xs text-gray-500">
+                        Assigned: {assignment.assignedDate ? formatLocalDateTime(assignment.assignedDate) : 'Unknown'}
+                        {assignment.completedAt ? ` • Completed: ${formatLocalDateTime(assignment.completedAt)}` : ''}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-sm font-semibold ${assignment.completed ? 'text-green-700' : 'text-amber-700'}`}>
+                        {assignment.completed ? 'Completed' : 'Pending'}
+                      </span>
+                      {assignment.completed ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            clearCompletedIndicator(assignment.id).catch((e) => {
+                              console.error(e);
+                              alert('Failed to clear completed indicator.');
+                            })
+                          }
+                        >
+                          Clear
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Add Student Dialog with Tabs */}
+      {/* Add Student Dialog */}
       <Dialog open={showAddStudentDialog} onOpenChange={setShowAddStudentDialog}>
         <DialogContent className="sm:max-w-[550px]">
           <DialogHeader>
             <DialogTitle>Add Students to Your Class</DialogTitle>
             <DialogDescription>
-              Create a new profile or connect to an existing student account.
+              Connect existing child profiles by parent email.
             </DialogDescription>
           </DialogHeader>
-
-          <Tabs defaultValue="add-new" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="add-new">
-                <Plus className="w-4 h-4 mr-2" />
-                Add New
-              </TabsTrigger>
-              <TabsTrigger value="connect">
-                <Link2 className="w-4 h-4 mr-2" />
-                Connect Existing
-              </TabsTrigger>
-            </TabsList>
-
-            {/* Add New Student Tab */}
-            <TabsContent value="add-new" className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="student-name">Student Name</Label>
-                <Input
-                  id="student-name"
-                  value={newStudentName}
-                  onChange={(e) => setNewStudentName(e.target.value)}
-                  placeholder="Enter student name..."
-                  className="h-12 text-lg"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="student-age">Age</Label>
-                <Input
-                  id="student-age"
-                  type="number"
-                  min="3"
-                  max="10"
-                  value={newStudentAge}
-                  onChange={(e) => setNewStudentAge(e.target.value)}
-                  placeholder="Enter age (3-10)..."
-                  className="h-12 text-lg"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Choose Avatar</Label>
-                <div className="grid grid-cols-5 gap-2 max-h-[200px] overflow-y-auto border rounded-lg p-2">
-                  {AVATAR_EMOJIS.map((emoji, index) => (
-                    <button
-                      key={index}
-                      onClick={() => setNewStudentAvatar(emoji)}
-                      className={`
-                        text-4xl p-3 rounded-lg border-2 transition-all
-                        ${newStudentAvatar === emoji
-                          ? 'border-green-500 bg-green-100 scale-110'
-                          : 'border-gray-300 hover:border-green-300 hover:bg-gray-50'
-                        }
-                      `}
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="pt-4 flex gap-2 justify-end">
-                <Button variant="outline" onClick={() => setShowAddStudentDialog(false)}>
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleAddStudent}
-                  disabled={!newStudentName.trim() || !newStudentAge.trim()}
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Student
-                </Button>
-              </div>
-            </TabsContent>
-
-            {/* Connect Existing Student Tab */}
-            <TabsContent value="connect" className="space-y-4 py-4">
+          <div className="space-y-4 py-4">
               <div className="bg-blue-50 p-4 rounded-lg border-2 border-blue-200">
                 <p className="text-sm text-blue-800">
                   ℹ️ Connect to students whose profiles were created by their parents.
-                  You'll need either the parent's email or the student's unique code.
+                  Enter the parent's email, then select one or more child profiles to connect.
                 </p>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="parent-email">Parent Email (Optional)</Label>
-                <Input
-                  id="parent-email"
-                  type="email"
-                  value={connectStudentEmail}
-                  onChange={(e) => setConnectStudentEmail(e.target.value)}
-                  placeholder="parent@example.com"
-                  className="h-12 text-lg"
-                />
+                <Label htmlFor="parent-email">Parent Email</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="parent-email"
+                    type="email"
+                    value={connectStudentEmail}
+                    onChange={(e) => {
+                      setConnectStudentEmail(e.target.value);
+                      setLookupMessage(null);
+                    }}
+                    placeholder="parent@example.com"
+                    className="h-12 text-lg"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleLookupParentStudents}
+                    disabled={!connectStudentEmail.trim()}
+                  >
+                    Find
+                  </Button>
+                </div>
               </div>
 
-              <div className="flex items-center gap-3">
-                <div className="flex-1 border-t border-gray-300" />
-                <span className="text-sm text-gray-500">OR</span>
-                <div className="flex-1 border-t border-gray-300" />
-              </div>
+              {lookupMessage && (
+                <div className={`rounded-lg border px-3 py-2 text-sm ${
+                  availableParentStudents.length > 0
+                    ? 'border-green-200 bg-green-50 text-green-800'
+                    : 'border-amber-200 bg-amber-50 text-amber-800'
+                }`}>
+                  {lookupMessage}
+                </div>
+              )}
 
-              <div className="space-y-2">
-                <Label htmlFor="student-code">Student Code (Optional)</Label>
-                <Input
-                  id="student-code"
-                  value={connectStudentCode}
-                  onChange={(e) => setConnectStudentCode(e.target.value)}
-                  placeholder="ABC-123-XYZ"
-                  className="h-12 text-lg font-mono"
-                />
-              </div>
-
-              <div className="bg-amber-50 p-3 rounded-lg border-2 border-amber-200">
-                <p className="text-sm text-amber-800">
-                  💡 <strong>Coming Soon:</strong> This feature will be available after Supabase integration.
-                  Parents will be able to share a unique code with you to link their child's account.
-                </p>
-              </div>
+              {availableParentStudents.length > 0 && (
+                <div className="space-y-2 border rounded-lg p-3 max-h-48 overflow-y-auto">
+                  <Label>Select Child Profiles</Label>
+                  {availableParentStudents.map((student) => (
+                    <div key={student.id} className="flex items-center gap-2">
+                      <Checkbox
+                        id={`connect-${student.id}`}
+                        checked={selectedParentStudentIds.includes(student.id)}
+                        onCheckedChange={(checked) => {
+                          setSelectedParentStudentIds((prev) =>
+                            checked ? [...prev, student.id] : prev.filter((id) => id !== student.id)
+                          );
+                        }}
+                      />
+                      <Label htmlFor={`connect-${student.id}`} className="cursor-pointer">
+                        {student.name}{typeof student.age === 'number' ? ` (Age ${student.age})` : ''}
+                      </Label>
+                    </div>
+                  ))}
+                  <Button type="button" onClick={handleConnectSelectedProfiles} className="w-full">
+                    Connect Students
+                  </Button>
+                </div>
+              )}
 
               <div className="pt-4 flex gap-2 justify-end">
                 <Button variant="outline" onClick={() => setShowAddStudentDialog(false)}>
                   Cancel
                 </Button>
-                <Button
-                  onClick={handleConnectStudent}
-                  disabled={!connectStudentEmail.trim() && !connectStudentCode.trim()}
-                  className="bg-blue-600 hover:bg-blue-700"
-                >
+                <Button onClick={handleConnectSelectedProfiles} disabled={selectedParentStudentIds.length === 0}>
                   <Link2 className="w-4 h-4 mr-2" />
-                  Connect Student
+                  Connect Selected
                 </Button>
               </div>
-            </TabsContent>
-          </Tabs>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showClassDialog} onOpenChange={setShowClassDialog}>
+        <DialogContent className="sm:max-w-[450px]">
+          <DialogHeader>
+            <DialogTitle>Create Class</DialogTitle>
+            <DialogDescription>Add a class, then use it to group students and assign activities.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="class-name">Class Name</Label>
+              <Input
+                id="class-name"
+                value={newClassName}
+                onChange={(e) => setNewClassName(e.target.value)}
+                placeholder="e.g. Tigers A"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowClassDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateClass} disabled={!newClassName.trim()}>
+              Create Class
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -652,6 +888,23 @@ export default function TeacherDashboard() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
+            {(selectedActivity?.type === 'color-quiz' || selectedActivity?.type === 'shape-quiz') && (
+              <div className="space-y-2">
+                <Label>Question Count</Label>
+                <div className="grid grid-cols-4 gap-2">
+                  {[5, 10, 15, 20].map((count) => (
+                    <Button
+                      key={count}
+                      type="button"
+                      variant={selectedQuestionCount === count ? 'default' : 'outline'}
+                      onClick={() => setSelectedQuestionCount(count as 5 | 10 | 15 | 20)}
+                    >
+                      {count}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="flex items-center space-x-2 pb-2 border-b">
               <Checkbox
                 id="select-all"

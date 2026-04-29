@@ -9,9 +9,12 @@ interface ChildProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
   children: ChildProfile[];
-  onAddChild: (name: string, avatar: string) => void;
-  onEditChild: (id: string, name: string) => void;
+  onAddChild: (name: string, avatar: string, age: number) => void;
+  onEditChild: (id: string, name: string, age: number) => void;
   onDeleteChild: (id: string) => void;
+  title?: string;
+  description?: string;
+  requireAtLeastOneChild?: boolean;
 }
 
 export function ChildProfileModal({
@@ -21,27 +24,35 @@ export function ChildProfileModal({
   onAddChild,
   onEditChild,
   onDeleteChild,
+  title,
+  description,
+  requireAtLeastOneChild = false,
 }: ChildProfileModalProps) {
   const [mode, setMode] = useState<'list' | 'add' | 'edit'>('list');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
+  const [age, setAge] = useState('4');
   const [selectedAvatar, setSelectedAvatar] = useState(AVATAR_EMOJIS[0]);
 
   if (!isOpen) return null;
 
   const handleAddChild = () => {
-    if (name.trim()) {
-      onAddChild(name.trim(), selectedAvatar);
+    const parsedAge = Number(age);
+    if (name.trim() && Number.isFinite(parsedAge) && parsedAge >= 2 && parsedAge <= 12) {
+      onAddChild(name.trim(), selectedAvatar, parsedAge);
       setName('');
+      setAge('4');
       setSelectedAvatar(AVATAR_EMOJIS[0]);
       setMode('list');
     }
   };
 
   const handleEditChild = () => {
-    if (editingId && name.trim()) {
-      onEditChild(editingId, name.trim());
+    const parsedAge = Number(age);
+    if (editingId && name.trim() && Number.isFinite(parsedAge) && parsedAge >= 2 && parsedAge <= 12) {
+      onEditChild(editingId, name.trim(), parsedAge);
       setName('');
+      setAge('4');
       setEditingId(null);
       setMode('list');
     }
@@ -50,6 +61,7 @@ export function ChildProfileModal({
   const startEdit = (child: ChildProfile) => {
     setEditingId(child.id);
     setName(child.name);
+    setAge(String(child.age ?? 4));
     setMode('edit');
   };
 
@@ -62,20 +74,27 @@ export function ChildProfileModal({
         {/* Header */}
         <div className="bg-gradient-to-r from-yellow-400 to-orange-400 p-6 flex items-center justify-between sticky top-0 z-10">
           <h2 className="text-3xl font-bold text-white">
-            {mode === 'add' ? '➕ Add Child' : mode === 'edit' ? '✏️ Edit Child' : '👶 Manage Children'}
+            {mode === 'add' ? '➕ Add Child' : mode === 'edit' ? '✏️ Edit Child' : title ?? '👶 Manage Children'}
           </h2>
-          <button
-            onClick={onClose}
-            className="text-white hover:bg-white/20 rounded-full p-2 transition-colors"
-          >
-            <X className="w-8 h-8" />
-          </button>
+          {!requireAtLeastOneChild && (
+            <button
+              onClick={onClose}
+              className="text-white hover:bg-white/20 rounded-full p-2 transition-colors"
+            >
+              <X className="w-8 h-8" />
+            </button>
+          )}
         </div>
 
         {/* Content */}
         <div className="p-6 space-y-4">
           {mode === 'list' && (
             <>
+              {description && (
+                <div className="rounded-xl border-2 border-blue-200 bg-blue-50 p-3 text-blue-800 text-sm">
+                  {description}
+                </div>
+              )}
               {/* Children List */}
               <div className="space-y-3">
                 {children.map((child) => (
@@ -143,6 +162,21 @@ export function ChildProfileModal({
                   maxLength={20}
                 />
               </div>
+              <div>
+                <Label htmlFor="child-age" className="text-xl text-gray-700 mb-2 block">
+                  Child's Age
+                </Label>
+                <Input
+                  id="child-age"
+                  type="number"
+                  min={2}
+                  max={12}
+                  value={age}
+                  onChange={(e) => setAge(e.target.value)}
+                  placeholder="Enter age (2-12)"
+                  className="h-14 text-xl border-4 border-blue-300 rounded-2xl"
+                />
+              </div>
 
               {/* Avatar Selection (only for add mode) */}
               {mode === 'add' && (
@@ -176,6 +210,7 @@ export function ChildProfileModal({
                   onClick={() => {
                     setMode('list');
                     setName('');
+                    setAge('4');
                     setEditingId(null);
                   }}
                   variant="outline"
@@ -185,7 +220,7 @@ export function ChildProfileModal({
                 </Button>
                 <Button
                   onClick={mode === 'add' ? handleAddChild : handleEditChild}
-                  disabled={!name.trim()}
+                  disabled={!name.trim() || !age.trim()}
                   className="flex-1 h-14 text-xl bg-green-600 hover:bg-green-700 rounded-full"
                 >
                   {mode === 'add' ? 'Add Child' : 'Save Changes'}

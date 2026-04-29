@@ -5,16 +5,20 @@ import { Card } from '../components/ui/card';
 import { BackButton } from '../components/BackButton';
 import { AchievementBadge } from '../components/AchievementBadge';
 import { useUserStore } from '../utils/useUserStore';
+import { useAssignmentStore } from '../utils/useAssignmentStore';
 import { createGameSession, createActivityLog } from '../utils/databaseTypes';
 import { Home, RotateCcw, Trophy, Star } from 'lucide-react';
 import { motion } from 'motion/react';
 import confetti from 'canvas-confetti';
-import backgroundImg from '../../artassets/background.png';
+import backgroundImg from '../../artassets/background.webp';
+import { isSupabaseConfigured, supabase } from '../utils/supabaseClient';
+import { upsertStudentAchievements, upsertStudentProgress } from '../utils/supabaseApi';
 
 export default function ScorePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { updateChildProgress, userState } = useUserStore();
+  const { markCompleted } = useAssignmentStore();
   const [showConfetti, setShowConfetti] = useState(false);
 
   const state = location.state as {
@@ -22,17 +26,43 @@ export default function ScorePage() {
     correct: number;
     total: number;
     gameType: 'color' | 'shape' | 'dragMatch';
+    assignmentId?: string | null;
   } | null;
 
   const score = state?.score || 0;
   const correct = state?.correct || 0;
   const total = state?.total || 0;
   const gameType = state?.gameType || 'color';
+  const assignmentId = state?.assignmentId ?? null;
 
   useEffect(() => {
     // Update child progress
     if (state && userState.currentChild) {
       updateChildProgress(score, gameType);
+      const badges = getBadges();
+      // Persist to Supabase (near real-time dashboards)
+      if (isSupabaseConfigured && supabase) {
+        const studentId = userState.currentChild.id;
+        const run = async () => {
+          if (gameType === 'color') {
+            await upsertStudentProgress({ studentId, colorScore: score, incrementTotalGames: true });
+          } else if (gameType === 'shape') {
+            await upsertStudentProgress({ studentId, shapeScore: score, incrementTotalGames: true });
+          } else {
+            await upsertStudentProgress({ studentId, dragMatchScore: score, incrementTotalGames: true });
+          }
+          await upsertStudentAchievements({
+            studentId,
+            badges: badges.map((b) => ({ type: b.toLowerCase(), icon: b })),
+          });
+          if (assignmentId) {
+            await markCompleted(assignmentId, studentId);
+          }
+        };
+        run().catch((e) => console.error(e));
+      } else if (assignmentId) {
+        markCompleted(assignmentId, userState.currentChild.id).catch((e) => console.error(e));
+      }
 
       // Log game session (database-ready structure)
       const gameTypeMap = {
@@ -93,7 +123,7 @@ export default function ScorePage() {
       };
       frame();
     }
-  }, [score, gameType]); // Removed 'state' and 'updateChildProgress' from dependencies
+  }, [assignmentId, gameType, score]); // keep behavior identical; persistence is best-effort
 
   const getPerformanceMessage = () => {
     if (score >= 90) return "Outstanding! You're a star!";

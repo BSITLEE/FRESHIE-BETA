@@ -1,14 +1,87 @@
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Progress } from '../components/ui/progress';
 import { useUserStore } from '../utils/useUserStore';
 import { ArrowLeft, TrendingUp, Award, Calendar, Target } from 'lucide-react';
-import backgroundImg from '../../artassets/background.png';
+import backgroundImg from '../../artassets/background.webp';
+import { formatLocalDate, formatLocalDateTime } from '../utils/time';
+import { fetchAchievementHistoryForStudent, fetchAssignmentsForStudent } from '../utils/supabaseApi';
+import { isSupabaseConfigured, supabase } from '../utils/supabaseClient';
+import { Assignment } from '../utils/useAssignmentStore';
 
 export default function ParentDashboard() {
   const navigate = useNavigate();
   const { userState, switchChild } = useUserStore();
+  const [assignmentHistory, setAssignmentHistory] = useState<Assignment[]>([]);
+  const [achievementHistory, setAchievementHistory] = useState<Array<{ id: string; icon: string; date_earned: string }>>([]);
+
+  useEffect(() => {
+    const run = async () => {
+      if (!userState.currentChild) {
+        setAssignmentHistory([]);
+        setAchievementHistory([]);
+        return;
+      }
+      if (!(isSupabaseConfigured && supabase)) return;
+      const childId = userState.currentChild.id;
+      const rows = await fetchAssignmentsForStudent(childId);
+      const achievements = await fetchAchievementHistoryForStudent(childId);
+      setAssignmentHistory(
+        rows.map((row) => ({
+          id: row.id,
+          activityType: row.activity_type,
+          activityName: row.activity_name,
+          assignedBy: row.assigned_by,
+          assignedTo: row.assigned_to,
+          classId: row.class_id ?? null,
+          questionCount: row.question_count ?? null,
+          assignedDate: row.assigned_date,
+          completed: row.completed,
+          completedAt: row.completed_at,
+        }))
+      );
+      setAchievementHistory(achievements.map((a) => ({ id: a.id, icon: a.icon, date_earned: a.date_earned })));
+    };
+    run().catch((e) => console.error(e));
+  }, [userState.currentChild?.id]);
+
+  useEffect(() => {
+    if (!(isSupabaseConfigured && supabase) || !userState.currentChild) return;
+    const childId = userState.currentChild.id;
+    const refresh = async () => {
+      const rows = await fetchAssignmentsForStudent(childId);
+      setAssignmentHistory(
+        rows.map((row) => ({
+          id: row.id,
+          activityType: row.activity_type,
+          activityName: row.activity_name,
+          assignedBy: row.assigned_by,
+          assignedTo: row.assigned_to,
+          classId: row.class_id ?? null,
+          questionCount: row.question_count ?? null,
+          assignedDate: row.assigned_date,
+          completed: row.completed,
+          completedAt: row.completed_at,
+        }))
+      );
+      const achievements = await fetchAchievementHistoryForStudent(childId);
+      setAchievementHistory(achievements.map((a) => ({ id: a.id, icon: a.icon, date_earned: a.date_earned })));
+    };
+    const channel = supabase
+      .channel(`parent-dashboard-${childId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'assignments', filter: `assigned_to=eq.${childId}` }, () => {
+        void refresh();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'student_achievements', filter: `student_id=eq.${childId}` }, () => {
+        void refresh();
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userState.currentChild?.id]);
 
   const getRecentActivity = () => {
     // Return empty array if no games played
@@ -16,12 +89,21 @@ export default function ParentDashboard() {
       return [];
     }
     
+    const baseDate = new Date();
     return [
-      { date: 'April 15, 2026', activity: 'Color Quiz', score: 85 },
-      { date: 'April 14, 2026', activity: 'Shape Quiz', score: 90 },
-      { date: 'April 13, 2026', activity: 'Drag & Match', score: 100 },
-      { date: 'April 12, 2026', activity: 'Color Quiz', score: 75 },
-    ];
+      { daysAgo: 0, activity: 'Color Quiz', score: 85 },
+      { daysAgo: 1, activity: 'Shape Quiz', score: 90 },
+      { daysAgo: 2, activity: 'Drag & Match', score: 100 },
+      { daysAgo: 3, activity: 'Color Quiz', score: 75 },
+    ].map((item) => {
+      const date = new Date(baseDate);
+      date.setDate(baseDate.getDate() - item.daysAgo);
+      return {
+        date: formatLocalDate(date),
+        activity: item.activity,
+        score: item.score,
+      };
+    });
   };
 
   return (
@@ -50,6 +132,7 @@ export default function ParentDashboard() {
             </h1>
             <p className="text-base md:text-lg text-amber-700">
               Track your child's learning journey
+              {userState.currentChild ? ` - ${userState.currentChild.name}, Age ${userState.currentChild.age}` : ''}
             </p>
           </div>
         </div>
@@ -259,6 +342,53 @@ export default function ParentDashboard() {
                   <div className="py-8 text-center">
                     <p className="text-gray-400 text-lg mb-2">No badges earned yet</p>
                     <p className="text-gray-500 text-sm">Score 80% or higher in games to earn badges!</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="border-4 border-cyan-400 bg-white/95 shadow-lg">
+              <CardHeader>
+                <CardTitle className="text-2xl">Assigned Activity History</CardTitle>
+                <CardDescription>Pending and completed assignments with local device dates</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {assignmentHistory.length === 0 ? (
+                  <p className="text-gray-500">No assignment records yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {assignmentHistory.slice(0, 8).map((assignment) => (
+                      <div key={assignment.id} className="rounded-lg border p-3 bg-gray-50">
+                        <p className="font-semibold">{assignment.activityName}</p>
+                        <p className="text-xs text-gray-600">
+                          Assigned: {formatLocalDate(assignment.assignedDate)}
+                          {assignment.completedAt ? ` • Completed: ${formatLocalDate(assignment.completedAt)}` : ''}
+                        </p>
+                        <p className={`text-xs font-semibold ${assignment.completed ? 'text-green-700' : 'text-amber-700'}`}>
+                          {assignment.completed ? 'Completed' : 'Pending'}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+            <Card className="border-4 border-indigo-400 bg-white/95 shadow-lg">
+              <CardHeader>
+                <CardTitle className="text-2xl">Achievement Timeline</CardTitle>
+                <CardDescription>Everything earned on this child profile.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {achievementHistory.length === 0 ? (
+                  <p className="text-gray-500">No achievements recorded yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {achievementHistory.slice(0, 12).map((entry) => (
+                      <div key={entry.id} className="rounded-lg border p-3 bg-gray-50 flex items-center justify-between">
+                        <span className="text-2xl">{entry.icon}</span>
+                        <span className="text-xs text-gray-600">{formatLocalDateTime(entry.date_earned)}</span>
+                      </div>
+                    ))}
                   </div>
                 )}
               </CardContent>

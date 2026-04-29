@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Button } from '../components/ui/button';
 import { BackButton } from '../components/BackButton';
 import { Palette, Shapes, Move } from 'lucide-react';
-import backgroundImg from '../../artassets/background.png';
+import backgroundImg from '../../artassets/background.webp';
 import { useUserStore } from '../utils/useUserStore';
 
 export default function GameOptionsPage() {

@@ -124,14 +124,14 @@ export const useUserStore = () => {
     });
   };
 
-  const addChild = (name: string, avatar: string) => {
+  const addChild = (name: string, avatar: string, age: number = 4) => {
     // TODO: Replace with Supabase insert when integrating database
     // const { data } = await supabase.from('students').insert({ name, avatar, parent_id: userId })
     const newChild: ChildProfile = {
       id: `child-${Date.now()}`, // In production, use UUID from Supabase
       name,
       avatar,
-      age: 4,
+      age,
       progress: {
         totalGamesPlayed: 0,
         colorQuizScore: 0,
@@ -148,16 +148,16 @@ export const useUserStore = () => {
     });
   };
 
-  const editChild = (id: string, name: string) => {
+  const editChild = (id: string, name: string, age?: number) => {
     const updatedChildren = userState.children.map(child => 
-      child.id === id ? { ...child, name } : child
+      child.id === id ? { ...child, name, age: age ?? child.age } : child
     );
 
     setUserState({
       ...userState,
       children: updatedChildren,
       currentChild: userState.currentChild?.id === id 
-        ? { ...userState.currentChild, name }
+        ? { ...userState.currentChild, name, age: age ?? userState.currentChild.age }
         : userState.currentChild,
     });
   };

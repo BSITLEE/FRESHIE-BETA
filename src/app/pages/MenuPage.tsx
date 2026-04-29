@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
@@ -6,7 +6,19 @@ import { ChildProfileModal } from '../components/ChildProfileModal';
 import { AchievementBadge } from '../components/AchievementBadge';
 import { useUserStore } from '../utils/useUserStore';
 import { useAssignmentStore } from '../utils/useAssignmentStore';
-import { Play, BarChart3, User, LogOut, Users, Settings, BookOpen, CheckCircle } from 'lucide-react';
+import { Play, BarChart3, LogOut, Users, Settings, BookOpen, CheckCircle } from 'lucide-react';
+import { isSupabaseConfigured, supabase } from '../utils/supabaseClient';
+import {
+  createStudentForParent,
+  fetchAchievementHistoryForStudent,
+  fetchAchievementsForStudents,
+  deleteStudentProfile,
+  fetchParentStudents,
+  fetchProgressForStudents,
+  fetchTeacherStudents,
+  updateStudentProfile,
+} from '../utils/supabaseApi';
+import { progressRowToChildProfile } from '../utils/supabaseModels';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,21 +27,95 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu';
-import backgroundImg from '../../artassets/background.png';
+import backgroundImg from '../../artassets/background.webp';
+import { formatLocalDateTime } from '../utils/time';
 
 export default function MenuPage() {
   const navigate = useNavigate();
-  const { userState, logout, switchChild, addChild, editChild, deleteChild } = useUserStore();
-  const { getAssignmentsForChild, markCompleted } = useAssignmentStore();
+  const { userState, logout, switchChild, addChild, editChild, deleteChild, login } = useUserStore();
+  const { getAssignmentsForChild } = useAssignmentStore();
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [isOnboardingFlow, setIsOnboardingFlow] = useState(false);
+  const [childAssignments, setChildAssignments] = useState<Awaited<ReturnType<typeof getAssignmentsForChild>>>([]);
+  const [achievementHistory, setAchievementHistory] = useState<Array<{ id: string; icon: string; date_earned: string }>>([]);
+  const PARENT_ONBOARDING_KEY = 'freshie-parent-onboarding-email';
 
-  const childAssignments = userState.currentChild
-    ? getAssignmentsForChild(userState.currentChild.id)
-    : [];
+  useEffect(() => {
+    if (!userState.role) {
+      navigate('/', { replace: true });
+    }
+  }, [navigate, userState.role]);
+
+  useEffect(() => {
+    const run = async () => {
+      if (!userState.currentChild) {
+        setChildAssignments([]);
+        setAchievementHistory([]);
+        return;
+      }
+      try {
+        const items = await getAssignmentsForChild(userState.currentChild.id);
+        setChildAssignments(items);
+        if (isSupabaseConfigured && supabase) {
+          const earned = await fetchAchievementHistoryForStudent(userState.currentChild.id);
+          setAchievementHistory(earned.map((e) => ({ id: e.id, icon: e.icon, date_earned: e.date_earned })));
+        }
+      } catch (e) {
+        console.error(e);
+        setChildAssignments([]);
+      }
+    };
+    run();
+  }, [getAssignmentsForChild, userState.currentChild?.id]);
+
+  useEffect(() => {
+    if (!(isSupabaseConfigured && supabase) || !userState.currentChild) return;
+    const childId = userState.currentChild.id;
+    const refresh = async () => {
+      const items = await getAssignmentsForChild(childId);
+      setChildAssignments(items);
+      const earned = await fetchAchievementHistoryForStudent(childId);
+      setAchievementHistory(earned.map((e) => ({ id: e.id, icon: e.icon, date_earned: e.date_earned })));
+    };
+    const channel = supabase
+      .channel(`menu-live-${childId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'assignments', filter: `assigned_to=eq.${childId}` }, () => {
+        void refresh();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'student_achievements', filter: `student_id=eq.${childId}` }, () => {
+        void refresh();
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [getAssignmentsForChild, userState.currentChild?.id]);
+
+  useEffect(() => {
+    const pendingEmail = localStorage.getItem(PARENT_ONBOARDING_KEY)?.trim().toLowerCase();
+    const currentEmail = (userState.email ?? '').trim().toLowerCase();
+    const shouldShowOnboarding =
+      userState.role === 'parent' &&
+      userState.children.length === 0 &&
+      !!pendingEmail &&
+      pendingEmail === currentEmail;
+
+    setIsOnboardingFlow(shouldShowOnboarding);
+    setShowProfileModal(shouldShowOnboarding);
+  }, [userState.children.length, userState.email, userState.role]);
+
+  const refreshChildrenFromDb = async (role: 'parent' | 'teacher', userId: string) => {
+    const students = role === 'teacher' ? await fetchTeacherStudents(userId) : await fetchParentStudents(userId);
+    const progress = await fetchProgressForStudents(students.map((s) => s.id));
+    const achievementMap = await fetchAchievementsForStudents(students.map((s) => s.id));
+    const children = students.map((s) => progressRowToChildProfile(s, progress[s.id] ?? null, achievementMap[s.id] ?? []));
+    login(userState.email ?? '', role, children);
+  };
 
   const handleStartAssignment = (
     assignmentId: string,
-    activityType: 'color-quiz' | 'shape-quiz' | 'drag-match'
+    activityType: 'color-quiz' | 'shape-quiz' | 'drag-match',
+    questionCount?: number | null
   ) => {
     const routes = {
       'color-quiz': '/color-quiz',
@@ -37,17 +123,79 @@ export default function MenuPage() {
       'drag-match': '/drag-match',
     };
 
-    // Mark as completed when they start
-    if (userState.currentChild) {
-      markCompleted(assignmentId, userState.currentChild.id);
-    }
-
-    navigate(routes[activityType]);
+    navigate(routes[activityType], {
+      state: {
+        assignmentId,
+        assignedQuestionCount: questionCount ?? null,
+      },
+    });
   };
 
-  const handleLogout = () => {
-    logout();
-    navigate('/');
+  const handleLogout = async () => {
+    try {
+      if (isSupabaseConfigured && supabase) {
+        await supabase.auth.signOut();
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      localStorage.removeItem(PARENT_ONBOARDING_KEY);
+      logout();
+      navigate('/', { replace: true });
+      setTimeout(() => {
+        if (window.location.pathname !== '/') window.location.assign('/');
+      }, 0);
+    }
+  };
+
+  const getDashboardPathByRole = () => {
+    if (userState.role === 'teacher') return '/teacher-dashboard';
+    if (userState.role === 'admin') return '/admin-dashboard';
+    return '/parent-dashboard';
+  };
+
+  const handleAddChild = async (name: string, avatar: string, age: number) => {
+    if (isSupabaseConfigured && supabase && (userState.role === 'parent' || userState.role === 'teacher')) {
+      const { data: authData } = await supabase.auth.getUser();
+      const userId = authData.user?.id;
+      if (!userId) throw new Error('Missing authenticated user');
+      await createStudentForParent({ parentId: userId, name, age });
+      await refreshChildrenFromDb(userState.role, userId);
+      if (userState.role === 'parent') {
+        localStorage.removeItem(PARENT_ONBOARDING_KEY);
+        setIsOnboardingFlow(false);
+      }
+      return;
+    }
+    addChild(name, avatar, age);
+    if (userState.role === 'parent') {
+      localStorage.removeItem(PARENT_ONBOARDING_KEY);
+      setIsOnboardingFlow(false);
+    }
+  };
+
+  const handleEditChild = async (id: string, name: string, age: number) => {
+    if (isSupabaseConfigured && supabase && userState.role === 'parent') {
+      const { data: authData } = await supabase.auth.getUser();
+      const parentId = authData.user?.id;
+      if (!parentId) throw new Error('Missing authenticated parent');
+      await updateStudentProfile({ studentId: id, name, age, parentId });
+      await refreshChildrenFromDb('parent', parentId);
+      return;
+    }
+    editChild(id, name, age);
+  };
+
+  const handleDeleteChild = async (id: string) => {
+    if (isSupabaseConfigured && supabase && userState.role === 'parent') {
+      const { data: authData } = await supabase.auth.getUser();
+      const parentId = authData.user?.id;
+      if (!parentId) throw new Error('Missing authenticated parent');
+      await deleteStudentProfile({ studentId: id, parentId });
+      await refreshChildrenFromDb('parent', parentId);
+      return;
+    }
+    deleteChild(id);
   };
 
   return (
@@ -111,7 +259,7 @@ export default function MenuPage() {
 
               {(userState.role === 'parent' || userState.role === 'teacher' || userState.role === 'admin') && (
                 <>
-                  <DropdownMenuItem onClick={() => navigate('/parent-dashboard')}>
+                  <DropdownMenuItem onClick={() => navigate(getDashboardPathByRole())}>
                     <BarChart3 className="w-4 h-4 mr-2" />
                     View Dashboard
                   </DropdownMenuItem>
@@ -135,42 +283,40 @@ export default function MenuPage() {
       {/* Child Profile Modal */}
       <ChildProfileModal
         isOpen={showProfileModal}
-        onClose={() => setShowProfileModal(false)}
+        onClose={() => {
+          if (isOnboardingFlow) return;
+          setShowProfileModal(false);
+        }}
         children={userState.children}
-        onAddChild={addChild}
-        onEditChild={editChild}
-        onDeleteChild={deleteChild}
+        onAddChild={(name, avatar, age) => {
+          handleAddChild(name, avatar, age).catch((e) => {
+            console.error(e);
+            alert('Failed to add child profile. Please try again.');
+          });
+        }}
+        onEditChild={(id, name, age) => {
+          handleEditChild(id, name, age).catch((e) => {
+            console.error(e);
+            alert('Failed to update child profile. Please try again.');
+          });
+        }}
+        onDeleteChild={(id) => {
+          handleDeleteChild(id).catch((e) => {
+            console.error(e);
+            alert('Failed to delete child profile. Please try again.');
+          });
+        }}
+        title={isOnboardingFlow ? 'Welcome, Parent!' : undefined}
+        description={
+          isOnboardingFlow
+            ? 'Create your first child profile to start playing and tracking progress. You can manage more child profiles anytime from Manage Children.'
+            : undefined
+        }
+        requireAtLeastOneChild={isOnboardingFlow}
       />
 
       {/* Main Content */}
       <div className="max-w-6xl mx-auto space-y-6">
-        {/* Empty State - No Children */}
-        {userState.children.length === 0 && (
-          <Card className="border-4 border-amber-500 bg-gradient-to-br from-amber-100 to-yellow-100 shadow-2xl">
-            <CardContent className="p-8 md:p-12 text-center">
-              <div className="mb-6">
-                <User className="w-24 h-24 mx-auto text-amber-600 mb-4" />
-                <h2 className="text-3xl md:text-4xl font-bold text-amber-800 mb-4" style={{ fontFamily: 'Comic Sans MS, cursive' }}>
-                  No Child Profiles Yet
-                </h2>
-                <p className="text-lg md:text-xl text-amber-700 mb-6">
-                  {userState.role === 'teacher'
-                    ? 'Add student profiles to get started with assignments and tracking.'
-                    : 'Add your children to start tracking their learning journey!'}
-                </p>
-              </div>
-              <Button
-                size="lg"
-                onClick={() => setShowProfileModal(true)}
-                className="h-16 md:h-20 px-12 md:px-16 text-xl md:text-2xl bg-amber-600 hover:bg-amber-700 rounded-full shadow-xl transform hover:scale-105 transition-transform"
-              >
-                <Plus className="w-6 h-6 md:w-8 md:h-8 mr-3" />
-                Add {userState.role === 'teacher' ? 'Student' : 'Child'}
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
         {/* Main Content - Only show if children exist */}
         {userState.children.length > 0 && (
           <>
@@ -195,10 +341,21 @@ export default function MenuPage() {
                       <CardDescription className="text-sm">
                         Assigned by {assignment.assignedBy}
                       </CardDescription>
+                      {assignment.questionCount ? (
+                        <CardDescription className="text-xs text-blue-700">
+                          Questions: {assignment.questionCount}
+                        </CardDescription>
+                      ) : null}
                     </CardHeader>
                     <CardContent>
                       <Button
-                        onClick={() => handleStartAssignment(assignment.id, assignment.activityType)}
+                        onClick={() =>
+                          handleStartAssignment(
+                            assignment.id,
+                            assignment.activityType,
+                            assignment.questionCount ?? null
+                          )
+                        }
                         className="w-full bg-blue-600 hover:bg-blue-700"
                       >
                         <Play className="w-4 h-4 mr-2" />
@@ -302,6 +459,28 @@ export default function MenuPage() {
                 </div>
               )}
             </div>
+          </CardContent>
+        </Card>
+        <Card className="border-4 border-indigo-400 bg-white/95 shadow-lg">
+          <CardHeader>
+            <CardTitle className="text-2xl md:text-3xl text-indigo-700">Achievement History</CardTitle>
+            <CardDescription className="text-base md:text-lg">
+              Saved for this child profile over time.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {achievementHistory.length === 0 ? (
+              <p className="text-gray-500">No achievement history yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {achievementHistory.slice(0, 10).map((item) => (
+                  <div key={item.id} className="rounded-lg border p-3 bg-gray-50 flex items-center justify-between">
+                    <span className="text-2xl">{item.icon}</span>
+                    <span className="text-xs text-gray-600">{formatLocalDateTime(item.date_earned)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
         </>

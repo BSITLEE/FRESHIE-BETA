@@ -1,20 +1,25 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useLocation } from 'react-router';
 import { generateShapeQuiz, getShapeSvg, QuizQuestion } from '../utils/mockData';
 import { QuizSettings } from '../components/QuizSettings';
 import { BackButton } from '../components/BackButton';
 import { motion, AnimatePresence } from 'motion/react';
-import backgroundImg from '../../artassets/background.png';
-import freshieBoardImg from '../../artassets/freshieboard.png';
-import freshieIdleImg from '../../artassets/freshieidle.png';
-import freshieCorrectImg from '../../artassets/freshiecorrect.png';
-import freshieWrongImg from '../../artassets/freshiewrong.png';
-import freshieBushImg from '../../artassets/freshiebush.png';
+import backgroundImg from '../../artassets/background.webp';
+import freshieBoardImg from '../../artassets/freshieboard.webp';
+import freshieIdleImg from '../../artassets/freshieidle.webp';
+import freshieCorrectImg from '../../artassets/freshiecorrect.webp';
+import freshieWrongImg from '../../artassets/freshiewrong.webp';
+import freshieBushImg from '../../artassets/freshiebush.webp';
 
 export default function ShapeQuizPage() {
   const navigate = useNavigate();
-  const [gameStarted, setGameStarted] = useState(false);
-  const [questions, setQuestions] = useState<QuizQuestion[]>([]);
+  const location = useLocation();
+  const assignmentId = (location.state as { assignmentId?: string } | null)?.assignmentId;
+  const assignedQuestionCount = (location.state as { assignedQuestionCount?: number | null } | null)?.assignedQuestionCount;
+  const [gameStarted, setGameStarted] = useState(Boolean(assignmentId && assignedQuestionCount));
+  const [questions, setQuestions] = useState<QuizQuestion[]>(
+    assignmentId && assignedQuestionCount ? generateShapeQuiz(assignedQuestionCount) : []
+  );
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [score, setScore] = useState(0);
   const [feedback, setFeedback] = useState<'correct' | 'wrong' | null>(null);
@@ -61,7 +66,8 @@ export default function ShapeQuizPage() {
             score: finalScore,
             correct: isCorrect ? score + 1 : score,
             total: questions.length,
-            gameType: 'shape'
+            gameType: 'shape',
+            assignmentId: assignmentId ?? null,
           }
         });
       } else {

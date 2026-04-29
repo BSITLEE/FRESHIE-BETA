@@ -47,6 +47,7 @@ export interface ChildProfile {
   name: string;
   age: number;
   avatar: string;
+  parentId?: string;
   progress: {
     colorQuizScore: number;
     shapeQuizScore: number;

@@ -7,8 +7,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { useUserStore, UserRole } from '../utils/useUserStore';
 import { motion } from 'motion/react';
-import backgroundImg from '../../artassets/background.png';
-import logoImg from '../../artassets/freshielogo.png';
+import backgroundImg from '../../artassets/background.webp';
+import logoImg from '../../artassets/freshielogo.webp';
+import { ArrowLeft } from 'lucide-react';
+import { isSupabaseConfigured, supabase } from '../utils/supabaseClient';
+import {
+  fetchHydratedChildrenForUser,
+  fetchAchievementsForStudents,
+  fetchProgressForStudents,
+  getOrCreateAppUser,
+  getUserRoleById,
+  logActivity,
+} from '../utils/supabaseApi';
+import { progressRowToChildProfile } from '../utils/supabaseModels';
 
 /**
  * Login Page - Role-Based Authentication
@@ -23,6 +34,7 @@ import logoImg from '../../artassets/freshielogo.png';
  */
 
 export default function LoginPage() {
+  const PARENT_ONBOARDING_KEY = 'freshie-parent-onboarding-email';
   const navigate = useNavigate();
   const { login } = useUserStore();
 
@@ -40,6 +52,17 @@ export default function LoginPage() {
   const [teacherPassword, setTeacherPassword] = useState('');
   const [teacherName, setTeacherName] = useState('');
 
+  const resolveRole = async (userId: string, email: string): Promise<UserRole> => {
+    try {
+      return (await getUserRoleById(userId)) as UserRole;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      if (!message.toLowerCase().includes('not found')) throw e;
+      const created = await getOrCreateAppUser({ id: userId, email, role: 'parent' });
+      return created.role as UserRole;
+    }
+  };
+
   /**
    * Handle Login
    * In production, this will:
@@ -50,33 +73,65 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // TODO: Replace with Supabase Auth
-    // const { data, error } = await supabase.auth.signInWithPassword({ email: loginEmail, password: loginPassword })
-    // const { data: userData } = await supabase.from('users').select('role').eq('email', loginEmail).single()
-
-    // Temporary demo: Check email to determine role
     let role: UserRole = 'parent';
-    if (loginEmail.includes('admin')) {
-      role = 'admin';
-    } else if (loginEmail.includes('teacher')) {
-      role = 'teacher';
+
+    if (isSupabaseConfigured && supabase) {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: loginEmail,
+        password: loginPassword,
+      });
+      if (error) {
+        alert(error.message);
+        return;
+      }
+      const userId = data.user?.id;
+      if (!userId) {
+        alert('Login failed. Please try again.');
+        return;
+      }
+      role = await resolveRole(userId, loginEmail);
+      const students = await fetchHydratedChildrenForUser({ userId, role });
+      const progressMap = await fetchProgressForStudents(students.map((s) => s.id));
+      const achievementMap = await fetchAchievementsForStudents(students.map((s) => s.id));
+      const children = students.map((s) => progressRowToChildProfile(s, progressMap[s.id] ?? null, achievementMap[s.id] ?? []));
+      await logActivity({
+        actorUserId: userId,
+        eventType: 'login_success',
+        entityType: 'users',
+        entityId: userId,
+        metadata: { role, email: loginEmail },
+      }).catch(() => undefined);
+    } else {
+      // Local demo fallback (keeps app usable without Supabase keys).
+      if (loginEmail.includes('admin')) role = 'admin';
+      else if (loginEmail.includes('teacher')) role = 'teacher';
     }
 
-    login(loginEmail, role);
+    if (isSupabaseConfigured && supabase) {
+      const { data } = await supabase.auth.getUser();
+      const userId = data.user?.id;
+      const students = userId ? await fetchHydratedChildrenForUser({ userId, role }) : [];
+      const progressMap = await fetchProgressForStudents(students.map((s) => s.id));
+      const achievementMap = await fetchAchievementsForStudents(students.map((s) => s.id));
+      const children = students.map((s) => progressRowToChildProfile(s, progressMap[s.id] ?? null, achievementMap[s.id] ?? []));
+      login(loginEmail, role, children);
+    } else {
+      login(loginEmail, role);
+    }
 
     // Route based on role
     switch (role) {
       case 'admin':
-        navigate('/admin-dashboard');
+        navigate('/admin-dashboard', { replace: true });
         break;
       case 'teacher':
-        navigate('/teacher-dashboard');
+        navigate('/teacher-dashboard', { replace: true });
         break;
       case 'parent':
-        navigate('/menu');
+        navigate('/menu', { replace: true });
         break;
       default:
-        navigate('/menu');
+        navigate('/menu', { replace: true });
     }
   };
 
@@ -87,16 +142,44 @@ export default function LoginPage() {
   const handleParentSignup = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // TODO: Replace with Supabase Auth
-    // const { data, error } = await supabase.auth.signUp({
-    //   email: parentEmail,
-    //   password: parentPassword,
-    //   options: { data: { role: 'parent', name: parentName } }
-    // })
-    // await supabase.from('users').insert({ email: parentEmail, role: 'parent', name: parentName })
+    if (isSupabaseConfigured && supabase) {
+      let { data, error } = await supabase.auth.signUp({
+        email: parentEmail,
+        password: parentPassword,
+        options: { data: { name: parentName, role: 'parent' } },
+      });
+
+      if (error && error.message.toLowerCase().includes('already registered')) {
+        const signInResult = await supabase.auth.signInWithPassword({
+          email: parentEmail,
+          password: parentPassword,
+        });
+        data = signInResult.data;
+        error = signInResult.error;
+      }
+
+      if (error) {
+        alert(error.message);
+        return;
+      }
+      if (data.user?.id) {
+        await getOrCreateAppUser({ id: data.user.id, email: parentEmail, role: 'parent' });
+      }
+      if (!data.session) {
+        alert('Signup successful. Please verify your email, then log in.');
+        navigate('/login', { replace: true });
+        return;
+      }
+      const role = await resolveRole(data.user!.id, parentEmail);
+      login(parentEmail, role);
+      localStorage.setItem(PARENT_ONBOARDING_KEY, parentEmail);
+      navigate('/menu', { replace: true });
+      return;
+    }
 
     login(parentEmail, 'parent');
-    navigate('/setup-profile', { state: { role: 'parent' } });
+    localStorage.setItem(PARENT_ONBOARDING_KEY, parentEmail);
+    navigate('/menu', { replace: true });
   };
 
   /**
@@ -106,16 +189,40 @@ export default function LoginPage() {
   const handleTeacherSignup = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // TODO: Replace with Supabase Auth
-    // const { data, error } = await supabase.auth.signUp({
-    //   email: teacherEmail,
-    //   password: teacherPassword,
-    //   options: { data: { role: 'teacher', name: teacherName } }
-    // })
-    // await supabase.from('users').insert({ email: teacherEmail, role: 'teacher', name: teacherName })
+    if (isSupabaseConfigured && supabase) {
+      let { data, error } = await supabase.auth.signUp({
+        email: teacherEmail,
+        password: teacherPassword,
+        options: { data: { name: teacherName, role: 'teacher' } },
+      });
+      if (error && error.message.toLowerCase().includes('already registered')) {
+        const signInResult = await supabase.auth.signInWithPassword({
+          email: teacherEmail,
+          password: teacherPassword,
+        });
+        data = signInResult.data;
+        error = signInResult.error;
+      }
+      if (error) {
+        alert(error.message);
+        return;
+      }
+      if (data.user?.id) {
+        await getOrCreateAppUser({ id: data.user.id, email: teacherEmail, role: 'teacher' });
+      }
+      if (!data.session) {
+        alert('Signup successful. Please verify your email, then log in.');
+        navigate('/login', { replace: true });
+        return;
+      }
+      const role = await resolveRole(data.user!.id, teacherEmail);
+      login(teacherEmail, role);
+      navigate(role === 'admin' ? '/admin-dashboard' : '/teacher-dashboard', { replace: true });
+      return;
+    }
 
     login(teacherEmail, 'teacher');
-    navigate('/setup-profile', { state: { role: 'teacher' } });
+    navigate('/teacher-dashboard', { replace: true });
   };
 
   return (
@@ -128,6 +235,15 @@ export default function LoginPage() {
       }}
     >
       <div className="absolute inset-0 bg-black/20" />
+
+      <Button
+        variant="outline"
+        size="lg"
+        onClick={() => navigate('/')}
+        className="absolute top-6 left-6 rounded-full w-14 h-14 border-4 border-green-600 bg-amber-200/90 hover:bg-amber-300 shadow-lg z-20"
+      >
+        <ArrowLeft className="w-7 h-7 text-green-800" />
+      </Button>
 
       <motion.div
         initial={{ scale: 0.8, opacity: 0, y: 50 }}

@@ -1,0 +1,9 @@
+{
+    "env":{
+        "ANTHROPIC_AUTH_TOKEN":"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",
+        "ANTHROPIC_BASE_URL":"https://openrouter.ai/api",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL":"tencent/hy3-preview:free",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL":"tencent/hy3-preview:free",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL":"tencent/hy3-preview:free"
+    }
+}

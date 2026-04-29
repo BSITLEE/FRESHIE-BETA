@@ -1,4 +1,11 @@
 import { useState, useEffect } from 'react';
+import { isSupabaseConfigured, supabase } from './supabaseClient';
+import {
+  clearCompletedAssignmentIndicator,
+  createAssignmentsForStudents,
+  fetchAssignmentsForStudent,
+  markAssignmentCompleted as markAssignmentCompletedInDb,
+} from './supabaseApi';
 
 /**
  * Assignment Store - Database-Ready Structure
@@ -32,10 +39,13 @@ export interface Assignment {
   activityType: 'color-quiz' | 'shape-quiz' | 'drag-match';
   activityName: string;
   assignedBy: string;
-  assignedTo: string[]; // Child profile IDs (will be single value in DB)
+  assignedTo: string;
+  classId?: string | null;
+  questionCount?: number | null;
   assignedDate: string;
   dueDate?: string;
-  completed: string[]; // Child IDs who completed (will be boolean in DB)
+  completed: boolean;
+  completedAt?: string | null;
 }
 
 // Simple state management using localStorage (will be replaced with Supabase)
@@ -58,42 +68,70 @@ export const useAssignmentStore = () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(assignments));
   }, [assignments]);
 
-  const createAssignment = (
+  const createAssignment = async (
     activityType: 'color-quiz' | 'shape-quiz' | 'drag-match',
     activityName: string,
     assignedBy: string,
-    assignedTo: string[]
+    assignedTo: string[],
+    questionCount?: number | null,
+    classId?: string | null
   ) => {
-    // TODO: Replace with Supabase insert when integrating database
-    // For each student, create a separate assignment row:
-    // assignedTo.forEach(studentId => {
-    //   await supabase.from('assignments').insert({
-    //     activity_type: activityType,
-    //     activity_name: activityName,
-    //     assigned_by: assignedBy,
-    //     assigned_to: studentId
-    //   })
-    // })
-    const newAssignment: Assignment = {
-      id: `assignment-${Date.now()}`, // In production, use UUID from Supabase
+    if (isSupabaseConfigured && supabase) {
+      const { data: authData } = await supabase.auth.getUser();
+      const teacherId = authData.user?.id;
+      if (!teacherId) throw new Error('Missing authenticated teacher');
+      const inserted = await createAssignmentsForStudents({
+        teacherId,
+        activityType,
+        activityName,
+        studentIds: assignedTo,
+        questionCount: questionCount ?? null,
+        classId,
+      });
+      const mapped = inserted.map((row) => ({
+        id: row.id,
+        activityType: row.activity_type,
+        activityName: row.activity_name,
+        assignedBy,
+        assignedTo: row.assigned_to,
+        classId: row.class_id ?? null,
+        questionCount: row.question_count ?? null,
+        assignedDate: row.assigned_date,
+        completed: row.completed,
+        completedAt: row.completed_at,
+      })) satisfies Assignment[];
+      setAssignments((prev) => [...mapped, ...prev]);
+      return mapped;
+    }
+
+    const now = new Date().toISOString();
+    const newAssignments = assignedTo.map((studentId, index) => ({
+      id: `assignment-${Date.now()}-${index}`,
       activityType,
       activityName,
       assignedBy,
-      assignedTo,
-      assignedDate: new Date().toISOString(),
-      completed: [],
-    };
-    setAssignments([...assignments, newAssignment]);
-    return newAssignment;
+      assignedTo: studentId,
+      classId: classId ?? null,
+      questionCount: questionCount ?? null,
+      assignedDate: now,
+      completed: false,
+      completedAt: null,
+    })) satisfies Assignment[];
+    setAssignments((prev) => [...newAssignments, ...prev]);
+    return newAssignments;
   };
 
-  const markCompleted = (assignmentId: string, childId: string) => {
-    setAssignments(
-      assignments.map((assignment) => {
-        if (assignment.id === assignmentId && !assignment.completed.includes(childId)) {
+  const markCompleted = async (assignmentId: string, childId: string) => {
+    if (isSupabaseConfigured && supabase) {
+      await markAssignmentCompletedInDb({ assignmentId, studentId: childId });
+    }
+    setAssignments((prev) =>
+      prev.map((assignment) => {
+        if (assignment.id === assignmentId && assignment.assignedTo === childId) {
           return {
             ...assignment,
-            completed: [...assignment.completed, childId],
+            completed: true,
+            completedAt: new Date().toISOString(),
           };
         }
         return assignment;
@@ -101,12 +139,29 @@ export const useAssignmentStore = () => {
     );
   };
 
-  const getAssignmentsForChild = (childId: string) => {
-    return assignments.filter(
-      (assignment) =>
-        assignment.assignedTo.includes(childId) &&
-        !assignment.completed.includes(childId)
-    );
+  const getAssignmentsForChild = async (childId: string) => {
+    if (isSupabaseConfigured && supabase) {
+      const rows = await fetchAssignmentsForStudent(childId);
+      const mapped = rows.map((row) => ({
+        id: row.id,
+        activityType: row.activity_type,
+        activityName: row.activity_name,
+        assignedBy: row.assigned_by,
+        assignedTo: row.assigned_to,
+        classId: row.class_id ?? null,
+        questionCount: row.question_count ?? null,
+        assignedDate: row.assigned_date,
+        completed: row.completed,
+        completedAt: row.completed_at,
+      })) satisfies Assignment[];
+      setAssignments((prev) => {
+        const keep = prev.filter((a) => a.assignedTo !== childId);
+        return [...mapped, ...keep];
+      });
+      return mapped.filter((assignment) => !assignment.completed);
+    }
+
+    return assignments.filter((assignment) => assignment.assignedTo === childId && !assignment.completed);
   };
 
   const getAllAssignments = () => {
@@ -114,7 +169,17 @@ export const useAssignmentStore = () => {
   };
 
   const deleteAssignment = (assignmentId: string) => {
-    setAssignments(assignments.filter((a) => a.id !== assignmentId));
+    setAssignments((prev) => prev.filter((a) => a.id !== assignmentId));
+  };
+
+  const clearCompletedIndicator = async (assignmentId: string) => {
+    if (isSupabaseConfigured && supabase) {
+      const { data } = await supabase.auth.getUser();
+      const teacherId = data.user?.id;
+      if (!teacherId) throw new Error('Missing authenticated teacher');
+      await clearCompletedAssignmentIndicator({ assignmentId, teacherId });
+    }
+    setAssignments((prev) => prev.filter((a) => a.id !== assignmentId));
   };
 
   return {
@@ -124,5 +189,6 @@ export const useAssignmentStore = () => {
     getAssignmentsForChild,
     getAllAssignments,
     deleteAssignment,
+    clearCompletedIndicator,
   };
 };

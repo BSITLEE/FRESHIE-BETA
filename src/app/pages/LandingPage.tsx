@@ -1,8 +1,8 @@
 import { useNavigate } from 'react-router';
 import { Button } from '../components/ui/button';
 import { motion } from 'motion/react';
-import landingImg from '../../artassets/freshielanding.png';
-import logoImg from '../../artassets/freshielogo.png';
+import landingImg from '../../artassets/freshielanding.webp';
+import logoImg from '../../artassets/freshielogo.webp';
 
 export default function LandingPage() {
   const navigate = useNavigate();
