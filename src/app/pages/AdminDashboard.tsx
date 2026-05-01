@@ -9,21 +9,6 @@ import { isSupabaseConfigured, supabase } from '../utils/supabaseClient';
 import { fetchAdminSnapshot } from '../utils/supabaseApi';
 import { formatLocalDateTime } from '../utils/time';
 
-/**
- * Admin Dashboard - Database-Ready Structure
- *
- * This dashboard is designed to integrate with Supabase backend.
- * Currently displays empty state with placeholders for real data.
- *
- * Expected database integration points:
- * - Users table (id, email, role, created_at)
- * - Students table (id, name, age, avatar, teacher_id)
- * - Teachers table (id, user_id, name)
- * - Assignments table (id, activity_type, assigned_to, assigned_by)
- * - Game_results table (id, student_id, game_type, score, completed_at)
- * - Content tables (colors, shapes)
- */
-
 export default function AdminDashboard() {
   const navigate = useNavigate();
 
@@ -109,7 +94,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Main Content */}
+      {/* main content */}
       <div className="max-w-7xl mx-auto">
         <Tabs defaultValue="overview" className="space-y-6">
           <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 h-auto gap-2 bg-white/90 p-2 rounded-2xl border-4 border-green-400">
@@ -131,9 +116,9 @@ export default function AdminDashboard() {
             </TabsTrigger>
           </TabsList>
 
-          {/* Overview Tab */}
+          {/* overview tab */}
           <TabsContent value="overview" className="space-y-6">
-            {/* System Stats */}
+            {/* system stats */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
               <Card className="border-4 border-blue-400 bg-white/95 shadow-lg">
                 <CardHeader className="pb-3">
@@ -164,7 +149,7 @@ export default function AdminDashboard() {
                     {stats.totalStudents}
                   </p>
                   <p className="text-sm text-gray-500 mt-2">
-                    Active learners
+                    Active Learners
                   </p>
                 </CardContent>
               </Card>
@@ -269,7 +254,7 @@ export default function AdminDashboard() {
             </Card>
           </TabsContent>
 
-          {/* Content Tab */}
+          {/* content tab */}
           <TabsContent value="content" className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Card className="border-4 border-pink-400 bg-white/95 shadow-lg">

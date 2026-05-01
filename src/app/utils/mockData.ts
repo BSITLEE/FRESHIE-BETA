@@ -1,5 +1,3 @@
-// Mock data for the application
-
 export const colors = [
   { name: 'Red', hex: '#FF0000' },
   { name: 'Blue', hex: '#0000FF' },
@@ -12,29 +10,27 @@ export const colors = [
 ];
 
 /**
- * Shape Library - SVG Path-Based Shapes
- *
- * All shapes use SVG path data for scalable rendering.
- * Designed for database storage and dynamic rendering.
- * Each shape fits within a 100x100 viewBox for consistency.
+ * SHAPE LIBRARY - SVG svg path based shapes
+ * all of the shapes use SVG path data for scalable rendering.
  */
+
 export const shapes = [
-  // Basic Shapes
+  // basic shapes
   { name: 'Circle', svg: 'M50,10 A40,40 0 1,1 49.99,10 Z' },
   { name: 'Square', svg: 'M10,10 L90,10 L90,90 L10,90 Z' },
   { name: 'Triangle', svg: 'M50,10 L90,80 L10,80 Z' },
   { name: 'Rectangle', svg: 'M10,30 L90,30 L90,70 L10,70 Z' },
 
-  // Polygon Shapes
+  // polygon shapes
   { name: 'Pentagon', svg: 'M50,5 L95,40 L78,90 L22,90 L5,40 Z' },
   { name: 'Hexagon', svg: 'M50,5 L90,25 L90,65 L50,85 L10,65 L10,25 Z' },
 
-  // Curved Shapes
+  // curved shapes
   { name: 'Oval', svg: 'M50,10 A30,40 0 1,1 49.99,10 Z' },
   { name: 'Heart', svg: 'M50,85 C20,60 5,40 5,25 C5,15 12,10 20,10 C30,10 40,18 50,25 C60,18 70,10 80,10 C88,10 95,15 95,25 C95,40 80,60 50,85 Z' },
   { name: 'Crescent', svg: 'M50,10 A40,40 0 1,1 50,90 A30,30 0 1,0 50,10 Z' },
 
-  // Angular Shapes
+  // angular shapes
   { name: 'Diamond', svg: 'M50,10 L90,50 L50,90 L10,50 Z' },
   { name: 'Star', svg: 'M50,5 L61,40 L98,40 L68,62 L82,95 L50,73 L18,95 L32,62 L2,40 L39,40 Z' },
   { name: 'Arrow', svg: 'M10,40 L10,60 L70,60 L70,80 L95,50 L70,20 L70,40 Z' },
@@ -71,17 +67,17 @@ export interface DragMatchQuestion {
   options: Array<{ color: string; shape: string; id: string }>;
 }
 
-// Available avatar emojis for child profiles
+// available avatar emojis for child profiles
 export const AVATAR_EMOJIS = [
   '🦁', '🐘', '🦒', '🐯', '🦓', '🐵', '🐼', '🐨', '🦊', '🐻',
   '🐶', '🐱', '🐰', '🐹', '🐸', '🐙', '🦋', '🐝', '🐢', '🦉'
 ];
 
-// Mock child profiles - Default template for new accounts
+// mock child profiles for testing/demo purposes (early stage of development)
 export const mockChildProfiles: ChildProfile[] = [
   {
     id: '1',
-    name: 'Emma',
+    name: 'Lillie',
     age: 4,
     avatar: '🦁',
     progress: {
@@ -94,7 +90,7 @@ export const mockChildProfiles: ChildProfile[] = [
   },
   {
     id: '2',
-    name: 'Liam',
+    name: 'Gladion',
     age: 5,
     avatar: '🐘',
     progress: {
@@ -107,7 +103,6 @@ export const mockChildProfiles: ChildProfile[] = [
   },
 ];
 
-// Generate random quiz questions
 export const generateColorQuiz = (count: number = 5): QuizQuestion[] => {
   const questions: QuizQuestion[] = [];
   
@@ -150,7 +145,6 @@ export const generateDragMatchQuestion = (): DragMatchQuestion => {
   const randomColor = colors[Math.floor(Math.random() * colors.length)];
   const randomShape = shapes[Math.floor(Math.random() * shapes.length)];
   
-  // Generate 4 shape-color combinations
   const options = [];
   const shuffledColors = [...colors].sort(() => Math.random() - 0.5).slice(0, 4);
   const shuffledShapes = [...shapes].sort(() => Math.random() - 0.5).slice(0, 4);
@@ -163,7 +157,6 @@ export const generateDragMatchQuestion = (): DragMatchQuestion => {
     });
   }
   
-  // Ensure at least one correct answer exists
   options[0] = {
     color: randomColor.name,
     shape: randomShape.name,
@@ -178,12 +171,11 @@ export const generateDragMatchQuestion = (): DragMatchQuestion => {
   };
 };
 
-// Helper to get color hex
+
 export const getColorHex = (colorName: string): string => {
   return colors.find(c => c.name === colorName)?.hex || '#808080';
 };
 
-// Helper to get shape SVG path
 export const getShapeSvg = (shapeName: string): string => {
   return shapes.find(s => s.name === shapeName)?.svg || '';
 };

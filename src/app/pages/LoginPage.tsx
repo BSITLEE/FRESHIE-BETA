@@ -21,18 +21,6 @@ import {
 } from '../utils/supabaseApi';
 import { progressRowToChildProfile } from '../utils/supabaseModels';
 
-/**
- * Login Page - Role-Based Authentication
- *
- * Supports three user types:
- * - Parent: Can manage their own children, view progress
- * - Teacher: Can manage students, assign activities
- * - Admin: Database-assigned role (not selectable during login)
- *
- * In production, this will integrate with Supabase Auth.
- * User roles are stored in the database and retrieved after authentication.
- */
-
 export default function LoginPage() {
   const PARENT_ONBOARDING_KEY = 'freshie-parent-onboarding-email';
   const navigate = useNavigate();

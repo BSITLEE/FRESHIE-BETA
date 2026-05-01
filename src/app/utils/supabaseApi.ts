@@ -101,7 +101,7 @@ export async function fetchParentStudents(parentId: string): Promise<DbStudentPr
 export async function fetchTeacherStudents(teacherId: string): Promise<DbStudentProfile[]> {
   const sb = requireSupabase();
 
-  // Efficient: only pull student_profiles via the junction.
+  // only pulls student_profiles via the junction.
   const { data, error } = await sb
     .from('teacher_students')
     .select('student_profiles(id,parent_id,name,age,created_at)')
@@ -164,7 +164,7 @@ export async function createStudentForParent(params: {
 
   if (studentError) throw studentError;
 
-  // Initialize progress row (keeps tables empty until a student exists; no seeded data).
+  // initializes progress row (keeps tables empty until a student exists)
   const { error: progressError } = await sb.from('student_progress').insert({
     student_id: (student as DbStudentProfile).id,
     color_score: 0,
@@ -456,7 +456,7 @@ export async function upsertStudentProgress(params: {
 }): Promise<void> {
   const sb = requireSupabase();
 
-  // Read current once (single row), then update with minimal fields.
+  // read current once (single row), then update with minimal fields
   const { data: current, error: readError } = await sb
     .from('student_progress')
     .select('id,student_id,color_score,shape_score,drag_match_score,total_games')
@@ -516,7 +516,7 @@ export async function upsertStudentProgress(params: {
 export async function fetchAdminAnalytics(): Promise<DbAnalytics> {
   const sb = requireSupabase();
 
-  // Compute quickly with counts; keep a single row in analytics as a cache.
+  // computes quickly with counts and keeps a single row in analytics as a cache.
   const [{ count: usersCount }, { count: studentsCount }, { count: teachersCount }] = await Promise.all([
     sb.from('users').select('id', { count: 'exact', head: true }),
     sb.from('student_profiles').select('id', { count: 'exact', head: true }),

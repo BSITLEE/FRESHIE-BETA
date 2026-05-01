@@ -86,7 +86,7 @@ export function ChildProfileModal({
           )}
         </div>
 
-        {/* Content */}
+        {/* content */}
         <div className="p-6 space-y-4">
           {mode === 'list' && (
             <>
@@ -95,7 +95,7 @@ export function ChildProfileModal({
                   {description}
                 </div>
               )}
-              {/* Children List */}
+              {/* children list */}
               <div className="space-y-3">
                 {children.map((child) => (
                   <div
@@ -135,7 +135,7 @@ export function ChildProfileModal({
                 ))}
               </div>
 
-              {/* Add New Button */}
+              {/* add new button?? */}
               <Button
                 onClick={() => setMode('add')}
                 className="w-full h-16 text-2xl bg-green-600 hover:bg-green-700 rounded-full"
@@ -148,7 +148,7 @@ export function ChildProfileModal({
 
           {(mode === 'add' || mode === 'edit') && (
             <div className="space-y-6">
-              {/* Name Input */}
+              {/* for name input*/}
               <div>
                 <Label htmlFor="child-name" className="text-xl text-gray-700 mb-2 block">
                   Child's Name
@@ -178,7 +178,7 @@ export function ChildProfileModal({
                 />
               </div>
 
-              {/* Avatar Selection (only for add mode) */}
+              {/* avatar selection (only for add mode) */}
               {mode === 'add' && (
                 <div>
                   <Label className="text-xl text-gray-700 mb-3 block">

@@ -42,10 +42,10 @@ export const ChildAvatar = memo(({ avatar, size = 'md', showBorder = true }: Chi
         ${showBorder ? 'border-4 border-white shadow-lg' : ''}
         relative overflow-hidden`}
     >
-      {/* Shine effect */}
+      {/* shine effect again*/}
       <div className="absolute inset-0 bg-gradient-to-br from-white/30 to-transparent" />
 
-      {/* Emoji */}
+      {/* emojis */}
       <span className="relative z-10">{avatar}</span>
     </div>
   );

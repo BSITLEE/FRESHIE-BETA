@@ -16,7 +16,7 @@ export default function LandingPage() {
         backgroundPosition: 'center',
       }}
     >
-      {/* Decorative floating shapes */}
+      {/* floating shapes */}
       <motion.div
         className="absolute top-20 left-10 opacity-20"
         animate={{ y: [0, -20, 0], rotate: [0, 10, 0] }}
@@ -47,7 +47,7 @@ export default function LandingPage() {
         </svg>
       </motion.div>
 
-      {/* Logo at Top Right */}
+      {/* logo */}
       <motion.div
         initial={{ x: 100, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
@@ -64,7 +64,7 @@ export default function LandingPage() {
         />
       </motion.div>
 
-      {/* Top Navigation Bar - WITHOUT Home button */}
+      {/*navigation bar */}
       <nav className="flex justify-center gap-6 md:gap-8 pt-8 pb-4 z-10">
         <motion.button
           initial={{ y: -20, opacity: 0 }}
@@ -92,7 +92,7 @@ export default function LandingPage() {
         </motion.button>
       </nav>
 
-      {/* CTA Button Below Navigation */}
+      {/* cta button */}
       <div className="flex justify-center mt-8 md:mt-12 z-10">
         <motion.div
           initial={{ scale: 0.8, opacity: 0 }}

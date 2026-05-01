@@ -84,13 +84,13 @@ export const AchievementBadge = memo(({ type, size = 'md', animated = true }: Ac
         flex items-center justify-center shadow-lg ${config.glow} border-4 ${config.border}
         relative overflow-hidden`}
     >
-      {/* Shine effect */}
+      {/* shine effect because i think it looks cool */}
       <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent" />
 
-      {/* Icon */}
+      {/* icon!!! */}
       <Icon className={`${iconSizes[size]} text-white relative z-10`} fill="white" />
 
-      {/* Decorative dots */}
+      {/* decorative dots */}
       <div className="absolute top-1 right-1 w-1.5 h-1.5 bg-white/70 rounded-full" />
       <div className="absolute bottom-1 left-1 w-1 h-1 bg-white/50 rounded-full" />
     </div>

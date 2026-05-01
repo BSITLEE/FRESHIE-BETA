@@ -20,7 +20,7 @@ export function SupabaseBootstrap() {
   const bootstrappedRef = useRef(false);
 
   useEffect(() => {
-    // #region agent log
+    // #region agent log??
     debugLog({
       runId: 'pre-fix',
       hypothesisId: 'H2',

@@ -1,11 +1,4 @@
-/**
- * Database-Compatible Type Definitions
- * 
- * These types are structured to map directly to database tables and columns.
- * Naming conventions follow snake_case for easy backend integration.
- */
-
-// User Account Types
+// user account types
 export interface UserAccount {
   user_id: string;
   email: string;
@@ -14,7 +7,7 @@ export interface UserAccount {
   updated_at: string;
 }
 
-// Child Profile Types
+// child profile types
 export interface ChildProfileDB {
   child_profile_id: string;
   parent_user_id: string;
@@ -25,7 +18,7 @@ export interface ChildProfileDB {
   updated_at: string;
 }
 
-// Game Session Types
+// game session types
 export interface GameSession {
   game_session_id: string;
   child_profile_id: string;
@@ -37,7 +30,7 @@ export interface GameSession {
   completed_at: string;
 }
 
-// Progress Tracking Types
+// progress tracking types
 export interface ChildProgress {
   progress_id: string;
   child_profile_id: string;
@@ -50,16 +43,16 @@ export interface ChildProgress {
   updated_at: string;
 }
 
-// Badge Achievement Types
+// badge types
 export interface BadgeAchievement {
   badge_id: string;
   child_profile_id: string;
-  badge_type: string; // 'Star' for 80%+, 'Trophy' for 100%, etc.
+  badge_type: string; 
   badge_name: string;
   earned_at: string;
 }
 
-// Quiz Question Types (for question bank)
+// question types for the question bank
 export interface QuizQuestionDB {
   question_id: string;
   question_type: 'color' | 'shape';
@@ -69,16 +62,16 @@ export interface QuizQuestionDB {
   created_at: string;
 }
 
-// Activity Log Types (for analytics)
+// activity log types
 export interface ActivityLog {
   activity_id: string;
   child_profile_id: string;
   activity_type: 'game_started' | 'game_completed' | 'badge_earned' | 'login' | 'logout';
-  activity_data: Record<string, any>; // JSON object for flexible data
+  activity_data: Record<string, any>; // JSON object for more flexible data
   timestamp: string;
 }
 
-// Dashboard Statistics (aggregated data)
+// dashboard stats (aggregated data)
 export interface DashboardStats {
   stat_id: string;
   child_profile_id: string;
@@ -89,7 +82,7 @@ export interface DashboardStats {
   created_at: string;
 }
 
-// Parent-Child Relationship
+// parent-child relationship types
 export interface ParentChildRelation {
   relation_id: string;
   parent_user_id: string;
@@ -98,7 +91,7 @@ export interface ParentChildRelation {
   created_at: string;
 }
 
-// Access Key Types (for role-based login)
+// access key types (for role-based login)
 export interface AccessKey {
   key_id: string;
   access_key: string;
@@ -108,10 +101,7 @@ export interface AccessKey {
   expires_at: string | null;
 }
 
-/**
- * Helper functions to convert between UI types and database types
- */
-
+// helper functions to convert between ui types and database types
 import { ChildProfile } from './mockData';
 
 export const childProfileToDB = (profile: ChildProfile, parentUserId: string): ChildProfileDB => {

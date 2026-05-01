@@ -7,33 +7,6 @@ import {
   markAssignmentCompleted as markAssignmentCompletedInDb,
 } from './supabaseApi';
 
-/**
- * Assignment Store - Database-Ready Structure
- *
- * This store manages teacher-to-student assignments using localStorage.
- * When integrating with Supabase, replace this with Supabase queries.
- *
- * Database Integration Points:
- * - Assignment.id → assignments.id (UUID)
- * - Assignment.activityType → assignments.activity_type
- * - Assignment.activityName → assignments.activity_name
- * - Assignment.assignedBy → assignments.assigned_by (foreign key to users)
- * - Assignment.assignedTo → assignments.assigned_to (foreign key to students)
- * - Assignment.assignedDate → assignments.assigned_date
- * - Assignment.completed → assignments.completed (boolean)
- *
- * Migration Path:
- * 1. Replace createAssignment() with: supabase.from('assignments').insert()
- * 2. Replace getAssignmentsForChild() with: supabase.from('assignments').select().eq('assigned_to', studentId)
- * 3. Replace markCompleted() with: supabase.from('assignments').update({ completed: true })
- *
- * Note: In database, one assignment = one student (1:1). Current implementation
- * uses arrays to assign to multiple students, which should be split into
- * multiple rows when migrating to Supabase.
- *
- * See DATABASE_SCHEMA.md for complete integration instructions.
- */
-
 export interface Assignment {
   id: string;
   activityType: 'color-quiz' | 'shape-quiz' | 'drag-match';
@@ -48,7 +21,7 @@ export interface Assignment {
   completedAt?: string | null;
 }
 
-// Simple state management using localStorage (will be replaced with Supabase)
+// simple state management using localStorage
 const STORAGE_KEY = 'freshie-assignments';
 
 export const useAssignmentStore = () => {
@@ -122,9 +95,44 @@ export const useAssignmentStore = () => {
   };
 
   const markCompleted = async (assignmentId: string, childId: string) => {
-    if (isSupabaseConfigured && supabase) {
-      await markAssignmentCompletedInDb({ assignmentId, studentId: childId });
+    try {
+      if (isSupabaseConfigured && supabase) {
+        try {
+          await markAssignmentCompletedInDb({ assignmentId, studentId: childId });
+        } catch (updateError) {
+          console.error('Initial assignment completion update failed:', updateError);
+          throw updateError;
+        }
+
+        // waits a moment for the update to propagate
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        // verifies update succeeded by fetching fresh assignment data
+        let rows = await fetchAssignmentsForStudent(childId);
+        let updated = rows.find((r) => r.id === assignmentId);
+
+        // if not immediately reflected, wait a bit more and retry
+        if (!updated || !updated.completed) {
+          console.warn('Assignment completion not immediately reflected, retrying verification...');
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          rows = await fetchAssignmentsForStudent(childId);
+          updated = rows.find((r) => r.id === assignmentId);
+        }
+
+        if (!updated || !updated.completed) {
+          throw new Error(
+            `Assignment completion verification failed - status not persisted after retry. Assignment: ${assignmentId}, studentId: ${childId}`
+          );
+        }
+
+        console.log('Assignment completion verified:', { assignmentId, childId, completedAt: updated.completed_at });
+      }
+    } catch (e) {
+      console.error('Failed to mark assignment completed:', e);
+      throw e;
     }
+
+    // updates local state after successful verification
     setAssignments((prev) =>
       prev.map((assignment) => {
         if (assignment.id === assignmentId && assignment.assignedTo === childId) {

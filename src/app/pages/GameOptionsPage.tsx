@@ -61,7 +61,7 @@ export default function GameOptionsPage() {
             </div>
           </div>
 
-          {/* Profile Icon */}
+          {/* profile icon */}
           <Button 
             variant="outline"
             size="lg"
@@ -73,7 +73,7 @@ export default function GameOptionsPage() {
         </div>
       </div>
 
-      {/* Game Options Grid */}
+      {/* game options grid */}
       <div className="max-w-6xl mx-auto">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
           {gameOptions.map((game) => {
@@ -108,7 +108,7 @@ export default function GameOptionsPage() {
           })}
         </div>
 
-        {/* Instructions Card */}
+        {/* instructions card */}
         <Card className="mt-8 border-4 border-yellow-400 bg-yellow-50 shadow-lg">
           <CardHeader>
             <CardTitle className="text-xl md:text-2xl text-yellow-800">

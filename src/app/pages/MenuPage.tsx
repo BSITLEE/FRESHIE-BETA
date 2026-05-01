@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
@@ -17,6 +17,7 @@ import {
   fetchProgressForStudents,
   fetchTeacherStudents,
   updateStudentProfile,
+  fetchAssignmentsForStudent,
 } from '../utils/supabaseApi';
 import { progressRowToChildProfile } from '../utils/supabaseModels';
 import {
@@ -38,9 +39,15 @@ export default function MenuPage() {
   const [isOnboardingFlow, setIsOnboardingFlow] = useState(false);
   const [childAssignments, setChildAssignments] = useState<Awaited<ReturnType<typeof getAssignmentsForChild>>>([]);
   const [achievementHistory, setAchievementHistory] = useState<Array<{ id: string; icon: string; date_earned: string }>>([]);
+  const [isLoadingAssignments, setIsLoadingAssignments] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const isLoggingOutRef = useRef(false);
   const PARENT_ONBOARDING_KEY = 'freshie-parent-onboarding-email';
 
   useEffect(() => {
+    // skips the navigation if logout is in progress to prevent that annoying flickering glitch
+    if (isLoggingOutRef.current) return;
+    
     if (!userState.role) {
       navigate('/', { replace: true });
     }
@@ -54,42 +61,93 @@ export default function MenuPage() {
         return;
       }
       try {
-        const items = await getAssignmentsForChild(userState.currentChild.id);
-        setChildAssignments(items);
+        setIsLoadingAssignments(true);
+        // will directly fetch assignments instead of using getAssignmentsForChild to avoid unnecessary re-renders
         if (isSupabaseConfigured && supabase) {
+          const items = await fetchAssignmentsForStudent(userState.currentChild.id);
+          // filters out completed assignments since this page shows pending assignments only
+          const pending = items.filter((a) => !a.completed);
+          setChildAssignments(
+            pending.map((row) => ({
+              id: row.id,
+              activityType: row.activity_type,
+              activityName: row.activity_name,
+              assignedBy: row.assigned_by,
+              assignedTo: row.assigned_to,
+              classId: row.class_id ?? null,
+              questionCount: row.question_count ?? null,
+              assignedDate: row.assigned_date,
+              completed: row.completed,
+              completedAt: row.completed_at,
+            }))
+          );
           const earned = await fetchAchievementHistoryForStudent(userState.currentChild.id);
           setAchievementHistory(earned.map((e) => ({ id: e.id, icon: e.icon, date_earned: e.date_earned })));
         }
       } catch (e) {
         console.error(e);
         setChildAssignments([]);
+      } finally {
+        setIsLoadingAssignments(false);
       }
     };
     run();
-  }, [getAssignmentsForChild, userState.currentChild?.id]);
+  }, [userState.currentChild?.id]);
 
   useEffect(() => {
     if (!(isSupabaseConfigured && supabase) || !userState.currentChild) return;
     const childId = userState.currentChild.id;
+    let refreshTimeout: ReturnType<typeof setTimeout>;
+    
     const refresh = async () => {
-      const items = await getAssignmentsForChild(childId);
-      setChildAssignments(items);
-      const earned = await fetchAchievementHistoryForStudent(childId);
-      setAchievementHistory(earned.map((e) => ({ id: e.id, icon: e.icon, date_earned: e.date_earned })));
+      try {
+        const items = await fetchAssignmentsForStudent(childId);
+        const pending = items.filter((a) => !a.completed);
+        setChildAssignments(
+          pending.map((row) => ({
+            id: row.id,
+            activityType: row.activity_type,
+            activityName: row.activity_name,
+            assignedBy: row.assigned_by,
+            assignedTo: row.assigned_to,
+            classId: row.class_id ?? null,
+            questionCount: row.question_count ?? null,
+            assignedDate: row.assigned_date,
+            completed: row.completed,
+            completedAt: row.completed_at,
+          }))
+        );
+        const earned = await fetchAchievementHistoryForStudent(childId);
+        setAchievementHistory(earned.map((e) => ({ id: e.id, icon: e.icon, date_earned: e.date_earned })));
+      } catch (e) {
+        console.error('Failed to refresh assignments from realtime:', e);
+      }
     };
+
+    // debounce refresh to prevent too many updates in quick succession
+    const debouncedRefresh = () => {
+      clearTimeout(refreshTimeout);
+      refreshTimeout = setTimeout(() => {
+        void refresh();
+      }, 300);
+    };
+
     const channel = supabase
       .channel(`menu-live-${childId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'assignments', filter: `assigned_to=eq.${childId}` }, () => {
-        void refresh();
+        debouncedRefresh();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'student_achievements', filter: `student_id=eq.${childId}` }, () => {
-        void refresh();
+        debouncedRefresh();
       })
       .subscribe();
     return () => {
-      supabase.removeChannel(channel);
+      clearTimeout(refreshTimeout);
+      if (supabase) {
+        supabase.removeChannel(channel);
+      }
     };
-  }, [getAssignmentsForChild, userState.currentChild?.id]);
+  }, [userState.currentChild?.id]);
 
   useEffect(() => {
     const pendingEmail = localStorage.getItem(PARENT_ONBOARDING_KEY)?.trim().toLowerCase();
@@ -132,19 +190,28 @@ export default function MenuPage() {
   };
 
   const handleLogout = async () => {
+    isLoggingOutRef.current = true;
     try {
-      if (isSupabaseConfigured && supabase) {
-        await supabase.auth.signOut();
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
+      setIsLoggingOut(true);
+      // clears session state immediately before any navigation
       localStorage.removeItem(PARENT_ONBOARDING_KEY);
       logout();
-      navigate('/', { replace: true });
-      setTimeout(() => {
-        if (window.location.pathname !== '/') window.location.assign('/');
-      }, 0);
+      
+      // handles the supabase sign out
+      if (isSupabaseConfigured && supabase) {
+        await supabase.auth.signOut().catch((e) => console.error('Supabase signOut error:', e));
+      }
+      
+      // navigates to the login page after logout is complete
+      navigate('/login', { replace: true });
+    } catch (e) {
+      console.error('Logout error:', e);
+      // for login failure
+      localStorage.removeItem(PARENT_ONBOARDING_KEY);
+      logout();
+      navigate('/login', { replace: true });
+    } finally {
+      setIsLoggingOut(false);
     }
   };
 
@@ -207,7 +274,7 @@ export default function MenuPage() {
         backgroundPosition: 'center',
       }}
     >
-      {/* Header */}
+      {/* header */}
       <div className="max-w-6xl mx-auto mb-8">
         <div className="flex items-center justify-between bg-white/90 rounded-3xl p-4 md:p-6 shadow-lg border-4 border-amber-500">
           <div>
@@ -221,7 +288,7 @@ export default function MenuPage() {
             )}
           </div>
 
-          {/* Profile Menu */}
+          {/* profile menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button 
@@ -280,7 +347,7 @@ export default function MenuPage() {
         </div>
       </div>
 
-      {/* Child Profile Modal */}
+      {/* for the child profile modal */}
       <ChildProfileModal
         isOpen={showProfileModal}
         onClose={() => {
@@ -315,13 +382,13 @@ export default function MenuPage() {
         requireAtLeastOneChild={isOnboardingFlow}
       />
 
-      {/* Main Content */}
+      {/* main content */}
       <div className="max-w-6xl mx-auto space-y-6">
-        {/* Main Content - Only show if children exist */}
+        {/*for when the child profiles exist */}
         {userState.children.length > 0 && (
           <>
-        {/* Assigned Activities */}
-        {childAssignments.length > 0 && (
+        {/* assigned activities */}
+        {childAssignments.length > 0 || isLoadingAssignments ? (
           <Card className="border-4 border-blue-500 bg-gradient-to-br from-blue-100 to-cyan-100 shadow-2xl">
             <CardContent className="p-6 md:p-8">
               <div className="flex items-center gap-3 mb-6">
@@ -330,46 +397,50 @@ export default function MenuPage() {
                   Activities Assigned by Your Teacher
                 </h2>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {childAssignments.map((assignment) => (
-                  <Card key={assignment.id} className="border-3 border-blue-400 bg-white shadow-lg hover:shadow-xl transition-shadow">
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-lg flex items-center gap-2">
-                        <CheckCircle className="w-5 h-5 text-blue-600" />
-                        {assignment.activityName}
-                      </CardTitle>
-                      <CardDescription className="text-sm">
-                        Assigned by {assignment.assignedBy}
-                      </CardDescription>
-                      {assignment.questionCount ? (
-                        <CardDescription className="text-xs text-blue-700">
-                          Questions: {assignment.questionCount}
+              {isLoadingAssignments ? (
+                <div className="text-center py-8 text-blue-700">Loading assignments...</div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {childAssignments.map((assignment) => (
+                    <Card key={assignment.id} className="border-3 border-blue-400 bg-white shadow-lg hover:shadow-xl transition-shadow">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <CheckCircle className="w-5 h-5 text-blue-600" />
+                          {assignment.activityName}
+                        </CardTitle>
+                        <CardDescription className="text-sm">
+                          Assigned by {assignment.assignedBy}
                         </CardDescription>
-                      ) : null}
-                    </CardHeader>
-                    <CardContent>
-                      <Button
-                        onClick={() =>
-                          handleStartAssignment(
-                            assignment.id,
-                            assignment.activityType,
-                            assignment.questionCount ?? null
-                          )
-                        }
-                        className="w-full bg-blue-600 hover:bg-blue-700"
-                      >
-                        <Play className="w-4 h-4 mr-2" />
-                        Start Activity
-                      </Button>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+                        {assignment.questionCount ? (
+                          <CardDescription className="text-xs text-blue-700">
+                            Questions: {assignment.questionCount}
+                          </CardDescription>
+                        ) : null}
+                      </CardHeader>
+                      <CardContent>
+                        <Button
+                          onClick={() =>
+                            handleStartAssignment(
+                              assignment.id,
+                              assignment.activityType,
+                              assignment.questionCount ?? null
+                            )
+                          }
+                          className="w-full bg-blue-600 hover:bg-blue-700"
+                        >
+                          <Play className="w-4 h-4 mr-2" />
+                          Start Activity
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
-        )}
+        ) : null}
 
-        {/* Primary CTA */}
+        {/* primary cta */}
         <Card className="border-4 border-green-600 bg-gradient-to-br from-green-100 to-amber-100 shadow-2xl">
           <CardContent className="p-8 md:p-12 text-center">
             <h2 className="text-3xl md:text-5xl font-bold text-green-800 mb-6" style={{ fontFamily: 'Comic Sans MS, cursive' }}>
@@ -386,7 +457,7 @@ export default function MenuPage() {
           </CardContent>
         </Card>
 
-        {/* Quick Stats */}
+        {/* quick stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
           <Card className="border-4 border-amber-400 bg-white/95 shadow-lg">
             <CardHeader className="pb-3">
@@ -431,7 +502,7 @@ export default function MenuPage() {
           </Card>
         </div>
 
-        {/* Badges */}
+        {/* badges*/}
         <Card className="border-4 border-yellow-400 bg-white/95 shadow-lg">
           <CardHeader>
             <CardTitle className="text-2xl md:text-3xl text-yellow-700">Your Badges</CardTitle>

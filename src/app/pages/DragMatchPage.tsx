@@ -14,7 +14,6 @@ import { useUserStore } from '../utils/useUserStore';
 
 const ItemType = 'SHAPE';
 
-// Detect if device supports touch
 const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 const backend = isTouchDevice ? TouchBackend : HTML5Backend;
 
@@ -214,9 +213,9 @@ function DragMatchGame() {
         </div>
       </div>
 
-      {/* Game Content */}
+      {/* game content */}
       <div className="max-w-6xl mx-auto space-y-8">
-        {/* Instructions */}
+        {/* instructions */}
         <Card className="bg-white/95 border-8 border-purple-500 shadow-2xl">
           <div className="p-6 md:p-8 text-center">
             <h2 
@@ -228,7 +227,7 @@ function DragMatchGame() {
           </div>
         </Card>
 
-        {/* Drop Zone */}
+        {/* drop zone */}
         <DropZone
           targetColor={question.targetColor}
           targetShape={question.targetShape}
@@ -256,7 +255,7 @@ function DragMatchGame() {
           </div>
         </Card>
 
-        {/* Check Answer Button */}
+        {/* check answer button */}
         {droppedItem && !feedback && (
           <div className="text-center">
             <Button

@@ -22,14 +22,14 @@ export function debugLog(payload: Omit<DebugPayload, 'sessionId' | 'timestamp'> 
     data: payload.data ?? {},
   };
 
-  // Primary (may be blocked by CORS/preflight in-browser)
+  // primary (may be blocked by CORS/preflight in-browser)
   fetch(ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': SESSION_ID },
     body: JSON.stringify(body),
   }).catch(() => {});
 
-  // Fallback: no-cors simple request to still reach logger
+  // fallback (no-cors simple request to still reach logger)
   fetch(ENDPOINT, {
     method: 'POST',
     mode: 'no-cors',

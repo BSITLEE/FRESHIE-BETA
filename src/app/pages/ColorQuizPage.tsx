@@ -57,7 +57,7 @@ export default function ColorQuizPage() {
       setFeedback('wrong');
     }
 
-    // Move to next question or finish
+    // to move to the next question or finish
     setTimeout(() => {
       if (isLastQuestion) {
         const finalScore = Math.round(((isCorrect ? score + 1 : score) / questions.length) * 100);
@@ -78,7 +78,7 @@ export default function ColorQuizPage() {
     }, 1500);
   };
 
-  // Settings screen
+  // settings screen
   if (!gameStarted) {
     return (
       <div
@@ -99,10 +99,10 @@ export default function ColorQuizPage() {
     );
   }
 
-  // Game screen with layering
+  // game screen
   return (
     <div className="min-h-screen relative overflow-hidden flex items-center justify-center">
-      {/* Layer 1: Board Background */}
+      {/* for layering my assets this is for the background */}
       <div
         className="absolute inset-0 z-0"
         style={{
@@ -113,7 +113,7 @@ export default function ColorQuizPage() {
         }}
       />
 
-      {/* Layer 2: Character on RIGHT side */}
+      {/* freshie sprite layer */}
       <AnimatePresence mode="wait">
         <motion.div
           key={feedback || 'idle'}
@@ -143,12 +143,12 @@ export default function ColorQuizPage() {
         </motion.div>
       </AnimatePresence>
 
-      {/* Layer 3: Quiz Content - Centered within board */}
+      {/* quiz content */}
       <div className="relative z-20 w-full max-w-4xl px-6 md:px-12">
         <BackButton to="/game-options" className="absolute top-4 left-4 bg-white/90 hover:bg-white z-30" />
 
         <div className="flex flex-col items-center justify-center min-h-[70vh] py-8">
-          {/* Progress Counter */}
+          {/* progress counter */}
           <motion.div
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -165,7 +165,7 @@ export default function ColorQuizPage() {
             </div>
           </motion.div>
 
-          {/* Question */}
+          {/* questions!!! ponder!!! */}
           <motion.h2
             key={currentQuestionIndex}
             initial={{ opacity: 0, y: -20 }}
@@ -180,7 +180,7 @@ export default function ColorQuizPage() {
             Which is {currentQuestion.correctAnswer.toLowerCase()}?
           </motion.h2>
 
-          {/* Answer Options */}
+          {/* answer options */}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 max-w-2xl w-full">
             {currentQuestion.options.map((option, index) => {
               const colorHex = getColorHex(option);
@@ -219,7 +219,7 @@ export default function ColorQuizPage() {
             })}
           </div>
 
-          {/* Feedback Message */}
+          {/* feedback message */}
           {feedback && (
             <motion.div
               initial={{ opacity: 0, scale: 0.8 }}
@@ -241,7 +241,7 @@ export default function ColorQuizPage() {
         </div>
       </div>
 
-      {/* Layer 4: Bush Foreground Overlay */}
+      {/* bush foreground */}
       <div
         className="absolute bottom-0 left-0 right-0 z-30 pointer-events-none"
         style={{

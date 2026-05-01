@@ -1,27 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ChildProfile, mockChildProfiles } from './mockData';
 
-/**
- * User Store - Database-Ready Structure
- *
- * This store manages user authentication and child profiles using localStorage.
- * When integrating with Supabase, replace this with Supabase queries.
- *
- * Database Integration Points:
- * - UserState.email → users.email
- * - UserState.role → users.role
- * - UserState.children → students table (foreign key: parent_id)
- * - UserState.currentChild → selected student from students table
- *
- * Migration Path:
- * 1. Replace login() with Supabase Auth: supabase.auth.signInWithPassword()
- * 2. Replace children array with query: supabase.from('students').select('*').eq('parent_id', userId)
- * 3. Replace updateChildProgress() with: supabase.from('game_results').insert()
- * 4. Replace addChild() with: supabase.from('students').insert()
- *
- * See DATABASE_SCHEMA.md for complete integration instructions.
- */
-
 export type UserRole = 'child' | 'parent' | 'teacher' | 'admin';
 
 interface UserState {
@@ -125,8 +104,6 @@ export const useUserStore = () => {
   };
 
   const addChild = (name: string, avatar: string, age: number = 4) => {
-    // TODO: Replace with Supabase insert when integrating database
-    // const { data } = await supabase.from('students').insert({ name, avatar, parent_id: userId })
     const newChild: ChildProfile = {
       id: `child-${Date.now()}`, // In production, use UUID from Supabase
       name,

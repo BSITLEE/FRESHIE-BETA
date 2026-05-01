@@ -36,35 +36,44 @@ export default function ScorePage() {
   const assignmentId = state?.assignmentId ?? null;
 
   useEffect(() => {
-    // Update child progress
+    // updates the child progress in the global state and persists to supabase if configured
     if (state && userState.currentChild) {
       updateChildProgress(score, gameType);
       const badges = getBadges();
-      // Persist to Supabase (near real-time dashboards)
+      // persist to Supabase (near real-time dashboards)
       if (isSupabaseConfigured && supabase) {
         const studentId = userState.currentChild.id;
         const run = async () => {
-          if (gameType === 'color') {
-            await upsertStudentProgress({ studentId, colorScore: score, incrementTotalGames: true });
-          } else if (gameType === 'shape') {
-            await upsertStudentProgress({ studentId, shapeScore: score, incrementTotalGames: true });
-          } else {
-            await upsertStudentProgress({ studentId, dragMatchScore: score, incrementTotalGames: true });
-          }
-          await upsertStudentAchievements({
-            studentId,
-            badges: badges.map((b) => ({ type: b.toLowerCase(), icon: b })),
-          });
-          if (assignmentId) {
-            await markCompleted(assignmentId, studentId);
+          try {
+            if (gameType === 'color') {
+              await upsertStudentProgress({ studentId, colorScore: score, incrementTotalGames: true });
+            } else if (gameType === 'shape') {
+              await upsertStudentProgress({ studentId, shapeScore: score, incrementTotalGames: true });
+            } else {
+              await upsertStudentProgress({ studentId, dragMatchScore: score, incrementTotalGames: true });
+            }
+            await upsertStudentAchievements({
+              studentId,
+              badges: badges.map((b) => ({ type: b.toLowerCase(), icon: b })),
+            });
+            if (assignmentId) {
+              try {
+                await markCompleted(assignmentId, studentId);
+                console.log('Assignment marked as completed successfully');
+              } catch (assignmentError) {
+                console.error('Failed to mark assignment completed:', assignmentError);
+              }
+            }
+          } catch (e) {
+            console.error('Error persisting game completion:', e);
           }
         };
-        run().catch((e) => console.error(e));
+        run().catch((e) => console.error('Unexpected error in score page effect:', e));
       } else if (assignmentId) {
-        markCompleted(assignmentId, userState.currentChild.id).catch((e) => console.error(e));
+        markCompleted(assignmentId, userState.currentChild.id).catch((e) => console.error('Local assignment completion failed:', e));
       }
 
-      // Log game session (database-ready structure)
+      // log game session (database-ready structure)
       const gameTypeMap = {
         'color': 'color_quiz' as const,
         'shape': 'shape_quiz' as const,
@@ -78,7 +87,7 @@ export default function ScorePage() {
         correct
       );
 
-      // Log activity
+      // log activity
       const activityLog = createActivityLog(
         userState.currentChild.id,
         'game_completed',
@@ -90,12 +99,12 @@ export default function ScorePage() {
         }
       );
 
-      // In production, these would be sent to the backend API
+      // in production, these would and should be sent to the backend API
       console.log('Game Session (DB-ready):', gameSession);
       console.log('Activity Log (DB-ready):', activityLog);
     }
 
-    // Trigger confetti for good scores
+    // triggers confetti for good scores
     if (score >= 80) {
       setShowConfetti(true);
       const duration = 3000;
@@ -123,7 +132,7 @@ export default function ScorePage() {
       };
       frame();
     }
-  }, [assignmentId, gameType, score]); // keep behavior identical; persistence is best-effort
+  }, [assignmentId, gameType, score]); // keeps the behavior identical
 
   const getPerformanceMessage = () => {
     if (score >= 90) return "Outstanding! You're a star!";

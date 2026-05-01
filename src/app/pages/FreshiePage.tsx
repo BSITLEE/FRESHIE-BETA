@@ -17,7 +17,7 @@ export default function FreshiePage() {
         backgroundPosition: 'center',
       }}
     >
-      {/* Decorative paw prints */}
+      {/* decorative paw prints for the page */}
       <motion.div
         className="absolute top-1/4 left-10 opacity-10"
         animate={{ scale: [1, 1.2, 1], rotate: [0, -10, 0] }}
@@ -34,7 +34,7 @@ export default function FreshiePage() {
         <div className="text-7xl text-amber-600">🐾</div>
       </motion.div>
 
-      {/* Back Button */}
+      {/* back Button */}
       <Button
         variant="outline"
         size="lg"
@@ -44,7 +44,7 @@ export default function FreshiePage() {
         <ArrowLeft className="w-7 h-7 text-green-800" />
       </Button>
 
-      {/* Main Content */}
+      {/* main content */}
       <motion.div
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
@@ -62,23 +62,23 @@ export default function FreshiePage() {
         </h1>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-          {/* Left side - Text */}
+          {/* freshie's description */}
           <div className="space-y-6 text-lg md:text-xl text-gray-800 leading-relaxed order-2 md:order-1 bg-gradient-to-br from-green-50 to-amber-50 rounded-2xl p-6 border-3 border-amber-400">
             <p style={{ fontFamily: "'Chelsea Market', cursive" }}>
-              Meet Freshie, your guide on this journey. He's a one of a kind, hamster like
-              tiger with a curious mind and a passion for learning. While he might look a
-              bit grumpy at first, don't be fooled. Freshie is a warm and encouraging companion
+              Meet Freshie, your guide on this journey. He's a one of a kind, hamster-like
+              tiger with a curious mind and a passion for learning! While he might look a
+              bit grumpy at first, don't be fooled! Freshie is a warm and encouraging companion
               who is always ready to cheer learners on. From the very first activity to every
               new discovery, he inspires children and even adults to stay curious, keep trying,
               and enjoy the process of learning something new.
             </p>
             <p style={{ fontFamily: "'Chelsea Market', cursive" }}>
               With Freshie by your side, every lesson becomes a small adventure filled with
-              color, creativity, and moments of achievement.
+              color, creativity, and moments of achievement!
             </p>
           </div>
 
-          {/* Right side - Image */}
+          {/* the man of the hour */}
           <div className="order-1 md:order-2 flex justify-center">
             <div className="bg-gradient-to-br from-amber-100 to-green-100 rounded-3xl p-6 shadow-lg border-4 border-green-600">
               <img

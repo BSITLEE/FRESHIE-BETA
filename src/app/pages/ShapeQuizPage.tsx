@@ -28,7 +28,7 @@ export default function ShapeQuizPage() {
   const currentQuestion = questions[currentQuestionIndex];
   const isLastQuestion = currentQuestionIndex === questions.length - 1;
 
-  // Determine character image based on feedback
+  // determines which sprite to trigger based on the answer
   const characterImage = feedback === 'correct'
     ? freshieCorrectImg
     : feedback === 'wrong'
@@ -57,7 +57,7 @@ export default function ShapeQuizPage() {
       setFeedback('wrong');
     }
 
-    // Move to next question or finish
+    // moves to next question /finish
     setTimeout(() => {
       if (isLastQuestion) {
         const finalScore = Math.round(((isCorrect ? score + 1 : score) / questions.length) * 100);
@@ -78,7 +78,7 @@ export default function ShapeQuizPage() {
     }, 1500);
   };
 
-  // Settings screen
+  // settings screen
   if (!gameStarted) {
     return (
       <div

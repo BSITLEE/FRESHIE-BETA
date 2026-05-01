@@ -20,7 +20,6 @@ export function RequireRole({
       return;
     }
     if (userState.role !== role) {
-      // Soft deny: send them to their best dashboard.
       if (userState.role === 'admin') navigate('/admin-dashboard');
       else if (userState.role === 'teacher') navigate('/teacher-dashboard');
       else navigate('/parent-dashboard');

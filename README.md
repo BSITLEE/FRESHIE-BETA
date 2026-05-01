@@ -1,7 +1,7 @@
 
-  # Responsive Preschool Learning App
+  # Freshie's Color and Shape Safari
 
-  This is a code bundle for Responsive Preschool Learning App. The original project is available at https://www.figma.com/design/7VDUqWnmx8eUbxmcOD4lxS/Responsive-Preschool-Learning-App.
+  This is a code bundle for my webapp!
 
   ## Running the code
 

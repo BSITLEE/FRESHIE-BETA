@@ -15,12 +15,14 @@ export default function ParentDashboard() {
   const navigate = useNavigate();
   const { userState, switchChild } = useUserStore();
   const [assignmentHistory, setAssignmentHistory] = useState<Assignment[]>([]);
+  const [completedAssignments, setCompletedAssignments] = useState<Assignment[]>([]);
   const [achievementHistory, setAchievementHistory] = useState<Array<{ id: string; icon: string; date_earned: string }>>([]);
 
   useEffect(() => {
     const run = async () => {
       if (!userState.currentChild) {
         setAssignmentHistory([]);
+        setCompletedAssignments([]);
         setAchievementHistory([]);
         return;
       }
@@ -28,20 +30,20 @@ export default function ParentDashboard() {
       const childId = userState.currentChild.id;
       const rows = await fetchAssignmentsForStudent(childId);
       const achievements = await fetchAchievementHistoryForStudent(childId);
-      setAssignmentHistory(
-        rows.map((row) => ({
-          id: row.id,
-          activityType: row.activity_type,
-          activityName: row.activity_name,
-          assignedBy: row.assigned_by,
-          assignedTo: row.assigned_to,
-          classId: row.class_id ?? null,
-          questionCount: row.question_count ?? null,
-          assignedDate: row.assigned_date,
-          completed: row.completed,
-          completedAt: row.completed_at,
-        }))
-      );
+      const mapped = rows.map((row) => ({
+        id: row.id,
+        activityType: row.activity_type,
+        activityName: row.activity_name,
+        assignedBy: row.assigned_by,
+        assignedTo: row.assigned_to,
+        classId: row.class_id ?? null,
+        questionCount: row.question_count ?? null,
+        assignedDate: row.assigned_date,
+        completed: row.completed,
+        completedAt: row.completed_at,
+      }));
+      setAssignmentHistory(mapped.filter((a) => !a.completed));
+      setCompletedAssignments(mapped.filter((a) => a.completed));
       setAchievementHistory(achievements.map((a) => ({ id: a.id, icon: a.icon, date_earned: a.date_earned })));
     };
     run().catch((e) => console.error(e));
@@ -50,10 +52,12 @@ export default function ParentDashboard() {
   useEffect(() => {
     if (!(isSupabaseConfigured && supabase) || !userState.currentChild) return;
     const childId = userState.currentChild.id;
+    let refreshTimeout: ReturnType<typeof setTimeout>;
+
     const refresh = async () => {
-      const rows = await fetchAssignmentsForStudent(childId);
-      setAssignmentHistory(
-        rows.map((row) => ({
+      try {
+        const rows = await fetchAssignmentsForStudent(childId);
+        const mapped = rows.map((row) => ({
           id: row.id,
           activityType: row.activity_type,
           activityName: row.activity_name,
@@ -64,22 +68,38 @@ export default function ParentDashboard() {
           assignedDate: row.assigned_date,
           completed: row.completed,
           completedAt: row.completed_at,
-        }))
-      );
-      const achievements = await fetchAchievementHistoryForStudent(childId);
-      setAchievementHistory(achievements.map((a) => ({ id: a.id, icon: a.icon, date_earned: a.date_earned })));
+        }));
+        setAssignmentHistory(mapped.filter((a) => !a.completed));
+        setCompletedAssignments(mapped.filter((a) => a.completed));
+        const achievements = await fetchAchievementHistoryForStudent(childId);
+        setAchievementHistory(achievements.map((a) => ({ id: a.id, icon: a.icon, date_earned: a.date_earned })));
+      } catch (e) {
+        console.error('Failed to refresh parent dashboard from realtime:', e);
+      }
     };
+
+    // debounce refresh to prevent too many updates in quick succession
+    const debouncedRefresh = () => {
+      clearTimeout(refreshTimeout);
+      refreshTimeout = setTimeout(() => {
+        void refresh();
+      }, 300);
+    };
+
     const channel = supabase
       .channel(`parent-dashboard-${childId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'assignments', filter: `assigned_to=eq.${childId}` }, () => {
-        void refresh();
+        debouncedRefresh();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'student_achievements', filter: `student_id=eq.${childId}` }, () => {
-        void refresh();
+        debouncedRefresh();
       })
       .subscribe();
     return () => {
-      supabase.removeChannel(channel);
+      clearTimeout(refreshTimeout);
+      if (supabase) {
+        supabase.removeChannel(channel);
+      }
     };
   }, [userState.currentChild?.id]);
 
@@ -349,24 +369,46 @@ export default function ParentDashboard() {
 
             <Card className="border-4 border-cyan-400 bg-white/95 shadow-lg">
               <CardHeader>
-                <CardTitle className="text-2xl">Assigned Activity History</CardTitle>
-                <CardDescription>Pending and completed assignments with local device dates</CardDescription>
+                <CardTitle className="text-2xl">Pending Assignments</CardTitle>
+                <CardDescription>Activities waiting to be completed</CardDescription>
               </CardHeader>
               <CardContent>
                 {assignmentHistory.length === 0 ? (
-                  <p className="text-gray-500">No assignment records yet.</p>
+                  <p className="text-gray-500">No pending assignments.</p>
                 ) : (
                   <div className="space-y-2">
                     {assignmentHistory.slice(0, 8).map((assignment) => (
-                      <div key={assignment.id} className="rounded-lg border p-3 bg-gray-50">
-                        <p className="font-semibold">{assignment.activityName}</p>
+                      <div key={assignment.id} className="rounded-lg border p-3 bg-blue-50 border-blue-200">
+                        <p className="font-semibold text-blue-900">{assignment.activityName}</p>
                         <p className="text-xs text-gray-600">
                           Assigned: {formatLocalDate(assignment.assignedDate)}
-                          {assignment.completedAt ? ` • Completed: ${formatLocalDate(assignment.completedAt)}` : ''}
                         </p>
-                        <p className={`text-xs font-semibold ${assignment.completed ? 'text-green-700' : 'text-amber-700'}`}>
-                          {assignment.completed ? 'Completed' : 'Pending'}
+                        <p className="text-xs font-semibold text-amber-700">⏳ Pending</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Completed Assignments */}
+            <Card className="border-4 border-green-400 bg-white/95 shadow-lg">
+              <CardHeader>
+                <CardTitle className="text-2xl">Completed Activities</CardTitle>
+                <CardDescription>Finished assignments with completion dates</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {completedAssignments.length === 0 ? (
+                  <p className="text-gray-500">No completed assignments yet. Keep working!</p>
+                ) : (
+                  <div className="space-y-2">
+                    {completedAssignments.slice(0, 8).map((assignment) => (
+                      <div key={assignment.id} className="rounded-lg border p-3 bg-green-50 border-green-200">
+                        <p className="font-semibold text-green-900">{assignment.activityName}</p>
+                        <p className="text-xs text-gray-600">
+                          Completed: {assignment.completedAt ? formatLocalDate(assignment.completedAt) : 'N/A'}
                         </p>
+                        <p className="text-xs font-semibold text-green-700">✓ Completed</p>
                       </div>
                     ))}
                   </div>

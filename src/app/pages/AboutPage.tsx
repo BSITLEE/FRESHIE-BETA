@@ -16,7 +16,7 @@ export default function AboutPage() {
         backgroundPosition: 'center',
       }}
     >
-      {/* Decorative elements */}
+      {/* decorations */}
       <motion.div
         className="absolute top-10 right-10 opacity-15"
         animate={{ rotate: [0, 360] }}
@@ -27,7 +27,7 @@ export default function AboutPage() {
         </svg>
       </motion.div>
 
-      {/* Back Button */}
+      {/* back button!!! */}
       <Button
         variant="outline"
         size="lg"
@@ -37,7 +37,7 @@ export default function AboutPage() {
         <ArrowLeft className="w-7 h-7 text-green-800" />
       </Button>
 
-      {/* Main Content */}
+      {/* main content*/}
       <motion.div
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
@@ -61,7 +61,7 @@ export default function AboutPage() {
               designed to help young minds discover the world of colors and shapes. Through
               engaging activities, bright visuals, and simple challenges, little learners build
               confidence as they recognize, match, and explore fundamental concepts, all while
-              having fun.
+              having fun!
             </p>
           </div>
         </div>

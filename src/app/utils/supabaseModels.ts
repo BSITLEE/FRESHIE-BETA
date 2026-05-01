@@ -115,8 +115,6 @@ export function progressRowToChildProfile(
   progress: DbStudentProgress | null,
   badges: string[] = []
 ): ChildProfile {
-  // UI expects age + avatar; schema does not store them.
-  // Use stable defaults so the existing UI stays identical and functional.
   const stableAvatar = ['🦁', '🐘', '🦒', '🐯', '🦓', '🐵', '🐼', '🐨', '🦊', '🐻'][
     Math.abs(hashString(student.id)) % 10
   ];

@@ -38,22 +38,6 @@ import {
 import { progressRowToChildProfile } from '../utils/supabaseModels';
 import { formatLocalDateTime } from '../utils/time';
 
-/**
- * Teacher Dashboard - Student Management & Assignment System
- *
- * Features:
- * - View all students assigned to the teacher
- * - Add new students directly (creates student profile)
- * - Connect to existing students (links to parent-created profiles)
- * - Assign activities to students
- * - Monitor class performance analytics
- *
- * Database Integration:
- * - Students list from `students` table via `student_teacher` junction
- * - Class stats calculated from `game_results` table
- * - Assignments stored in `assignments` table
- */
-
 export default function TeacherDashboard() {
   const navigate = useNavigate();
   const { userState, login } = useUserStore();
@@ -71,7 +55,7 @@ export default function TeacherDashboard() {
   const [showAddStudentDialog, setShowAddStudentDialog] = useState(false);
   const [lookupMessage, setLookupMessage] = useState<string | null>(null);
 
-  // Connection feature state
+  // connection feature state
   const [connectStudentEmail, setConnectStudentEmail] = useState('');
   const [availableParentStudents, setAvailableParentStudents] = useState<Array<{ id: string; name: string; age: number | null }>>([]);
   const [selectedParentStudentIds, setSelectedParentStudentIds] = useState<string[]>([]);
